@@ -12,6 +12,7 @@ add_executable(pico_tnc
         usb_input.c
         usb_output.c
         cmd.c
+        help.c
         serial.c
         tty.c
         flash.c
