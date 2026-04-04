@@ -24,28 +24,77 @@ function utf8_from_codepoint(int $codepoint): string
     return mb_convert_encoding(pack('N', $codepoint), 'UTF-8', 'UTF-32BE');
 }
 
-$entries = [];
-for ($cp = 0x0000; $cp <= 0xFFFF; $cp++) {
+function make_entry_from_codepoint(int $cp): ?array
+{
     $utf8 = utf8_from_codepoint($cp);
     $sjis = mb_convert_encoding($utf8, 'SJIS', 'UTF-8');
-    if (strlen($sjis) !== 2) {
-        continue;
-    }
-
-    $sjisCode = sjis_to_uint16($sjis);
-    if (!is_sjis_level1($sjisCode)) {
-        continue;
+    if (strlen($sjis) !== 1 && strlen($sjis) !== 2) {
+        return null;
     }
 
     $roundTrip = mb_convert_encoding($sjis, 'UTF-8', 'SJIS');
     if ($roundTrip !== $utf8) {
-        continue;
+        return null;
     }
 
-    $entries[] = [
+    return [
         'unicode' => $cp,
-        'sjis' => $sjisCode,
+        'sjis' => strlen($sjis) === 1 ? ord($sjis[0]) : sjis_to_uint16($sjis),
     ];
+}
+
+function add_entry(array &$entries, array &$seenUnicode, int $cp, bool $requireLevel1): void
+{
+    if (isset($seenUnicode[$cp])) {
+        return;
+    }
+
+    $entry = make_entry_from_codepoint($cp);
+    if ($entry === null) {
+        return;
+    }
+
+    if ($requireLevel1 && !is_sjis_level1($entry['sjis'])) {
+        return;
+    }
+
+    $entries[] = $entry;
+    $seenUnicode[$cp] = true;
+}
+
+$entries = [];
+$seenUnicode = [];
+
+// 1) ひらがな
+for ($cp = 0x3041; $cp <= 0x3096; $cp++) {
+    add_entry($entries, $seenUnicode, $cp, false);
+}
+
+// 2) カタカナ
+for ($cp = 0x30A1; $cp <= 0x30FA; $cp++) {
+    add_entry($entries, $seenUnicode, $cp, false);
+}
+
+// 3) 第一水準漢字
+for ($cp = 0x0000; $cp <= 0xFFFF; $cp++) {
+    add_entry($entries, $seenUnicode, $cp, true);
+}
+
+// 4) 記号類（将来追加しやすいよう末尾に集約）
+$symbolCodepoints = [
+    // Help text / Japanese punctuation
+    0x3000, // 　
+    0x3001, // 、
+    0x3002, // 。
+    0x300C, // 「
+    0x300D, // 」
+    0x30FB, // ・
+    0x30FC, // ー
+    0x00D7, // ×
+];
+
+foreach ($symbolCodepoints as $cp) {
+    add_entry($entries, $seenUnicode, $cp, false);
 }
 
 $header = [];

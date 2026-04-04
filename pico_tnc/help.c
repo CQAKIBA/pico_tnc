@@ -115,38 +115,6 @@ static int decode_utf8_char(const char *s, uint16_t *codepoint)
     return 1;
 }
 
-static bool encode_non_kanji_to_sjis(uint16_t unicode, uint16_t *sjis)
-{
-    if (unicode < 0x80) {
-        *sjis = unicode;
-        return true;
-    }
-
-    if (unicode >= 0x3041 && unicode <= 0x3093) {
-        *sjis = (uint16_t)(0x829F + (unicode - 0x3041));
-        return true;
-    }
-
-    if (unicode >= 0x30A1 && unicode <= 0x30F6) {
-        *sjis = (uint16_t)(0x8340 + (unicode - 0x30A1));
-        return true;
-    }
-
-    switch (unicode) {
-        case 0x3001: *sjis = 0x8141; return true; // 、
-        case 0x3002: *sjis = 0x8142; return true; // 。
-        case 0x30FC: *sjis = 0x815B; return true; // ー
-        case 0x30FB: *sjis = 0x8145; return true; // ・
-        case 0x300C: *sjis = 0x8175; return true; // 「
-        case 0x300D: *sjis = 0x8176; return true; // 」
-        case 0x00D7: *sjis = 0x817E; return true; // ×
-        default:
-            break;
-    }
-
-    return false;
-}
-
 static int utf8_to_sjis_line(const char *utf8, uint8_t *sjis_buf, int sjis_buf_len)
 {
     int in_idx = 0;
@@ -161,9 +129,13 @@ static int utf8_to_sjis_line(const char *utf8, uint8_t *sjis_buf, int sjis_buf_l
 
         in_idx += consumed;
 
-        sjis = lookup_sjis_from_level1(unicode);
-        if (!sjis && !encode_non_kanji_to_sjis(unicode, &sjis)) {
-            sjis = '?';
+        if (unicode < 0x80) {
+            sjis = unicode;
+        } else {
+            sjis = lookup_sjis_from_level1(unicode);
+            if (!sjis) {
+                sjis = '?';
+            }
         }
 
         if (sjis <= 0xFF) {

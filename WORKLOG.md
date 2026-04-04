@@ -160,3 +160,61 @@ Refactor Japanese help Shift_JIS output so UTF-8→Shift_JIS conversion is a sin
 - Conversion still uses linear search over the level-1 table per character; acceptable for help text volume but not optimized.
 - Per-line temporary SJIS buffer remains 256 bytes; very long lines are truncated to fit, as before.
 - Queue behavior remains one-line-at-a-time; SJIS lines can consume more bytes per line than UTF-8 ASCII-heavy lines.
+
+## 2026-04-04
+
+### Request
+Centralize UTF-8→Shift_JIS conversion behavior in the PHP generator, regenerate the table outputs, and simplify `help.c` to UTF-8 decode + generated table lookup + `?` fallback while preserving non-blocking line-by-line help output.
+
+### Files changed
+- `tools/gen_sjis_level1_table.php`
+- `pico_tnc/sjis_level1_table.h`
+- `pico_tnc/sjis_level1_table.c`
+- `pico_tnc/help.c`
+- `PLAN.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Expanded generator output ordering to: hiragana, katakana, first-level kanji, then symbols.
+- Added symbol section at table tail (ASCII and required Japanese punctuation) to reduce C-side handwritten exceptions.
+- Removed handwritten hiragana/katakana/symbol exception conversion logic from `help.c`; conversion now uses generated-table lookup plus `?` fallback.
+- Preserved existing non-blocking `help_poll()` behavior and per-line send flow.
+
+### Validation
+- Ran `php tools/gen_sjis_level1_table.php` successfully to regenerate `pico_tnc/sjis_level1_table.h` and `.c`.
+- Verified generated table contains requested words/marks coverage (`コマンド`, `キー`, `シリアル`, `デジピータ`, `キャリブレーション`, `・`, `ー`, `「」`) via script check.
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`.
+- Build could not run in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Risks / TODO
+- `lookup_sjis_from_level1()` remains linear search per decoded character; acceptable for help text volume but not optimized for large streams.
+- Queue behavior and `QUEUE_SIZE` were intentionally left unchanged.
+
+## 2026-04-04
+
+### Request
+Adjust UTF-8→Shift_JIS centralization so pure ASCII is not listed in the generated table and is passed through directly at runtime.
+
+### Files changed
+- `tools/gen_sjis_level1_table.php`
+- `pico_tnc/sjis_level1_table.c`
+- `pico_tnc/help.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Removed ASCII code points from the generated symbol section in `sjis_level1_table.c`.
+- `help.c` now passes ASCII (`U+0000`..`U+007F`) through directly without table lookup.
+- Non-ASCII conversion path remains generated-table lookup with `?` fallback.
+- Non-blocking `help_poll()` line-by-line send behavior remains unchanged.
+
+### Validation
+- Ran `php tools/gen_sjis_level1_table.php` successfully and regenerated outputs.
+- Ran script validation:
+  - confirmed ASCII space (`0x0020`) is absent from table
+  - confirmed requested Japanese words/symbols coverage still present (`missing none`).
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`.
+- Build could not run in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Risks / TODO
+- Table lookup remains linear search per non-ASCII character; acceptable for help text volume.
+- Queue behavior and `QUEUE_SIZE` remain unchanged by this adjustment.
