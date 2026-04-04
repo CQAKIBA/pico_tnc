@@ -1,7 +1,14 @@
 #include "help.h"
 
-static const char *const help_lines[] = {
+#include <ctype.h>
+#include <strings.h>
+#include <string.h>
+
+#include "sjis_level1_tablehelp.h"
+
+static const char *const help_lines_en[] = {
     "",
+    "JAPANESE HELP: help ja sjis | help ja utf8",
     "Commands are Case Insensitive",
     "Use Backspace Key (BS) for Correction",
     "Use the DISP command to desplay all options",
@@ -31,11 +38,50 @@ static tty_t *help_ttyp;
 static int help_line_idx;
 static bool help_active;
 static bool help_ok_pending;
+static bool help_use_sjis;
+static const char *const *help_lines;
+
+static bool is_eol_or_space(int ch)
+{
+    return ch == '\0' || isspace(ch);
+}
+
+static uint8_t *skip_spaces(uint8_t *p)
+{
+    while (*p && isspace(*p)) p++;
+    return p;
+}
 
 bool help_handle_command(tty_t *ttyp, uint8_t *buf, int len)
 {
-    (void)buf;
     (void)len;
+
+    help_lines = help_lines_en;
+    help_use_sjis = false;
+
+    if (buf && *buf) {
+        uint8_t *p = skip_spaces(buf);
+
+        if (strncasecmp((const char *)p, "ja", 2) || !is_eol_or_space(p[2])) {
+            return false;
+        }
+
+        p += 2;
+        p = skip_spaces(p);
+
+        help_lines = sjis_help_lines_ja_utf8;
+        help_use_sjis = true;
+
+        if (*p) {
+            if (!strcasecmp((const char *)p, "sjis")) {
+                help_use_sjis = true;
+            } else if (!strcasecmp((const char *)p, "utf8")) {
+                help_use_sjis = false;
+            } else {
+                return false;
+            }
+        }
+    }
 
     help_ttyp = ttyp;
     help_line_idx = 0;
@@ -56,7 +102,13 @@ void help_poll(void)
         const char *line = help_lines[help_line_idx];
 
         if (line) {
-            tty_write_str(help_ttyp, line);
+            if (help_use_sjis) {
+                uint8_t sjis_line_buf[256];
+                int sjis_len = sjis_level1_utf8_to_sjis_line(line, sjis_line_buf, sizeof(sjis_line_buf));
+                tty_write(help_ttyp, sjis_line_buf, sjis_len);
+            } else {
+                tty_write_str(help_ttyp, line);
+            }
             tty_write_str(help_ttyp, "\r\n");
             help_line_idx++;
             return;
