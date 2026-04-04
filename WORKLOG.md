@@ -5,6 +5,33 @@ This file tracks implementation work, validation, and remaining risks.
 ## 2026-04-04
 
 ### Request
+In `help` / `help ja` output, check whether `MYCALL` and `UNPROTO` are set, and if not, display a warning message in the selected language.
+
+### Files changed
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- `help` now checks `param.mycall` and `param.unproto[0]` when the command starts.
+- If either value is unset, help output first prints a 3-line warning in the active help language:
+  - English (`help`)
+  - Japanese (`help ja` / `help ja sjis` / `help ja utf8`)
+- Existing non-blocking one-line-at-a-time help output flow is preserved.
+- A blank separator line is inserted after the warning block before normal help text.
+
+### Validation
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`.
+- Build could not run in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Risks / TODO
+- Warning lines add a few extra help output lines, so queue usage duration (not per-line maximum) increases slightly while help is printing.
+- Per-line output size and line buffer behavior remain unchanged (`utf8_to_sjis_line()` temporary buffer is still 256 bytes).
+
+## 2026-04-04
+
+### Request
 Initialize repository workflow files for ChatGPT/Codex-assisted development.
 
 ### Files changed
