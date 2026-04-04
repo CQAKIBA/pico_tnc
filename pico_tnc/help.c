@@ -7,10 +7,12 @@
 #include <string.h>
 
 #include "sjis_level1_table.h"
+#include "tnc.h"
 
 static const char *const help_lines_en[] = {
     "",
     "JAPANESE HELP: help ja sjis | help ja utf8",
+    "",
     "Commands are Case Insensitive",
     "Use Backspace Key (BS) for Correction",
     "Use the DISP command to desplay all options",
@@ -63,12 +65,29 @@ static const char *const help_lines_ja_utf8[] = {
     NULL,
 };
 
+static const char *const help_warning_lines_en[] = {
+    "Warning: Please set MYCALL and UNPROTO.",
+    "MYCALL is your radio station's call sign.",
+    "UNPROTO is the destination; if not specified, use CQ.",
+    NULL,
+};
+
+static const char *const help_warning_lines_ja_utf8[] = {
+    "警告: MYCALL と UNPROTO を設定してください。",
+    "MYCALL あなたの無線局のコールサイン。",
+    "UNPROTO 宛先、指定無き場合はCQ。",
+    NULL,
+};
+
 static tty_t *help_ttyp;
 static int help_line_idx;
+static int help_warning_line_idx;
 static bool help_active;
 static bool help_ok_pending;
 static bool help_use_sjis;
+static bool help_show_config_warning;
 static const char *const *help_lines;
+static const char *const *help_warning_lines;
 
 static bool is_eol_or_space(int ch)
 {
@@ -157,6 +176,7 @@ bool help_handle_command(tty_t *ttyp, uint8_t *buf, int len)
     (void)len;
 
     help_lines = help_lines_en;
+    help_warning_lines = help_warning_lines_en;
     help_use_sjis = false;
 
     if (buf && *buf) {
@@ -170,6 +190,7 @@ bool help_handle_command(tty_t *ttyp, uint8_t *buf, int len)
         p = skip_spaces(p);
 
         help_lines = help_lines_ja_utf8;
+        help_warning_lines = help_warning_lines_ja_utf8;
         help_use_sjis = true;
 
         if (*p) {
@@ -185,8 +206,10 @@ bool help_handle_command(tty_t *ttyp, uint8_t *buf, int len)
 
     help_ttyp = ttyp;
     help_line_idx = 0;
+    help_warning_line_idx = 0;
     help_active = true;
     help_ok_pending = false;
+    help_show_config_warning = !param.mycall.call[0] || !param.unproto[0].call[0];
 
     return true;
 }
@@ -199,7 +222,29 @@ bool cmd_help(tty_t *ttyp, uint8_t *buf, int len)
 void help_poll(void)
 {
     if (help_active) {
-        const char *line = help_lines[help_line_idx];
+        const char *line;
+
+        if (help_show_config_warning) {
+            line = help_warning_lines[help_warning_line_idx];
+            if (line) {
+                if (help_use_sjis) {
+                    uint8_t sjis_line_buf[256];
+                    int sjis_len = utf8_to_sjis_line(line, sjis_line_buf, sizeof(sjis_line_buf));
+                    tty_write(help_ttyp, sjis_line_buf, sjis_len);
+                } else {
+                    tty_write_str(help_ttyp, line);
+                }
+                tty_write_str(help_ttyp, "\r\n");
+                help_warning_line_idx++;
+                return;
+            }
+
+            help_show_config_warning = false;
+            tty_write_str(help_ttyp, "\r\n");
+            return;
+        }
+
+        line = help_lines[help_line_idx];
 
         if (line) {
             if (help_use_sjis) {

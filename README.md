@@ -23,6 +23,7 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 - `help` : English help
 - `help ja` / `help ja sjis` : Japanese help in Shift_JIS
 - `help ja utf8` : Japanese help in UTF-8
+- If `MYCALL` or `UNPROTO` is unset, help shows a warning message to set both values.
 
 ## How to build
 
