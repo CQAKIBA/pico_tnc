@@ -18,6 +18,12 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 - Support KISS mode
 - Support multi-port up to 3 ports
 
+## Help command
+
+- `help` : English help
+- `help ja` / `help ja sjis` : Japanese help in Shift_JIS
+- `help ja utf8` : Japanese help in UTF-8
+
 ## How to build
 
 ```
