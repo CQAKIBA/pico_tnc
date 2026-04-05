@@ -205,7 +205,6 @@ typedef struct TNC_PARAM {
     uint8_t mon;
     uint8_t digi;
     uint8_t beacon;
-    uint8_t trace;
     uint8_t echo;
 } param_t;
 

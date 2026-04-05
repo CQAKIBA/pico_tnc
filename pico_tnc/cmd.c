@@ -60,12 +60,6 @@ enum STATE_CALLSIGN {
 
 
 
-enum TRACE {
-    TR_OFF = 0,
-    TR_XMIT,
-    TR_RCV,
-};
-
 static const uint8_t *gps_str[] = {
     "$GPGGA",
     "$GPGLL",
@@ -469,36 +463,6 @@ static bool cmd_gps(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
-static bool cmd_trace(tty_t *ttyp, uint8_t *buf, int len)
-{
-    if (buf && buf[0]) {
-
-        if (!strncasecmp(buf, "OFF", 3)) {
-            param.trace = TR_OFF;
-        } else if (!strncasecmp(buf, "XMIT", 4)) {
-            param.trace = TR_XMIT;
-        } else if (!strncasecmp(buf, "RCV", 3)) {
-            param.trace = TR_RCV;
-        } else {
-            return false;
-        }
-    
-    } else {
-
-        tty_write_str(ttyp, "TRace ");
-        if (param.trace == TR_XMIT) {
-            tty_write_str(ttyp, "XMIT");
-        } else if (param.trace == TR_RCV) {
-            tty_write_str(ttyp, "RCV");
-        } else {
-            tty_write_str(ttyp, "OFF");
-        }
-        tty_write_str(ttyp, "\r\n");
-    }
-    
-    return true;
-}
-
 static bool cmd_txdelay(tty_t *ttyp, uint8_t *buf, int len)
 {
     if (buf && buf[0]) {
@@ -603,9 +567,6 @@ static bool cmd_disp(tty_t *ttyp, uint8_t *buf, int len)
     // gps
     cmd_gps(ttyp, NULL, 0);
 
-    // trace
-    cmd_trace(ttyp, NULL, 0);
-
     // monitor
     cmd_monitor(ttyp, NULL, 0);
 
@@ -646,7 +607,6 @@ static const cmd_t cmd_list[] = {
     { "PERM", 4, cmd_perm, },
     { "ECHO", 4, cmd_echo, },
     { "GPS", 3, cmd_gps, },
-    { "TRACE", 5, cmd_trace, },
     { "TXDELAY", 7, cmd_txdelay, },
     { "CALIBRATE", 9, cmd_calibrate, },
     { "CONVERSE", 8, cmd_converse, },

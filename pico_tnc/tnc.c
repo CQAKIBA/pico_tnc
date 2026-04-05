@@ -43,7 +43,6 @@ param_t param = {
     .txdelay = 100,
     .echo = 1,
     .gps = 0,
-    .trace = 0,
     .mon = 0,
     .digi = 0,
     .beacon = 0,

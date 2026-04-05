@@ -2,6 +2,24 @@
 
 This file tracks implementation work, validation, and remaining risks.
 
+## 2026-04-05
+
+### Summary
+Removed unused TRACE-related code as one grouped change:
+- deleted `cmd_trace()` implementation, TRACE enum, command table registration, and DISP trace output
+- removed TRACE lines from English/Japanese help text
+- removed `param.trace` member from `param_t` and its initializer entry
+
+### Files changed
+- `pico_tnc/cmd.c`, `pico_tnc/help.c`, `pico_tnc/tnc.h`, `pico_tnc/tnc.c`, `WORKLOG.md`
+
+### Validation status
+- `rg -n "param\\.trace|cmd_trace|TRace|TRACE|TR_OFF|TR_XMIT|TR_RCV|\\{ \\\"TRACE\\\"" pico_tnc` : no remaining references in source.
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`, but this environment lacks `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`), so full build verification could not complete.
+
+### Remaining risks / TODO
+- None specific beyond required environment setup for full firmware build.
+
 ## 2026-04-04
 
 ### Request
