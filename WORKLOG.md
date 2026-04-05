@@ -5,6 +5,29 @@ This file tracks implementation work, validation, and remaining risks.
 ## 2026-04-05
 
 ### Summary
+Removed the unused test-packet replay path and related files from normal firmware builds:
+- removed `TEST_PACKET`-guarded test hooks from `main.c` (`test.h` include, `test_init()`, `test()`)
+- removed `test.c` and `packet_table.c` from `pico_tnc/CMakeLists.txt` sources
+- deleted `pico_tnc/test.c`, `pico_tnc/test.h`, `pico_tnc/packet_table.c`, and `pico_tnc/packet_table.h`
+
+### Files changed
+- `pico_tnc/main.c`, `pico_tnc/CMakeLists.txt`, `pico_tnc/test.c`, `pico_tnc/test.h`, `pico_tnc/packet_table.c`, `pico_tnc/packet_table.h`, `WORKLOG.md`
+
+### Behavior changes
+- Normal firmware runtime path no longer contains dormant test replay hooks.
+- Large `packet_table` blob and replay implementation are removed from the repository tree and default build, so ROM usage is expected to decrease.
+- No intended changes to AX.25, send/receive, command handling, or help behavior.
+
+### Validation status
+- `rg -n "packet_table|packet_table\.h|test_init\(|\btest\(\)|TEST_PACKET|#include "test\.h"" pico_tnc` confirms no remaining matches.
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`, but this environment lacks `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`), so full build verification could not complete.
+
+### Remaining risks / TODO
+- If test replay is needed again later, restore deleted files and re-add source entries in `pico_tnc/CMakeLists.txt` and call sites in `main.c` intentionally.
+
+## 2026-04-05
+
+### Summary
 Removed unused TRACE-related code as one grouped change:
 - deleted `cmd_trace()` implementation, TRACE enum, command table registration, and DISP trace output
 - removed TRACE lines from English/Japanese help text

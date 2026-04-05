@@ -43,13 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "send.h"
 #include "ax25.h"
 
-//#define TEST_PACKET 1
-
-#ifdef TEST_PACKET
-#include "test.h"
-//#include "packet_table.h"
-#endif
-
 #include "cmd.h"
 //#include "usb_input.h"
 #include "usb_output.h"
@@ -85,11 +78,6 @@ int main()
     serial_init();
     tty_init();     // should call after tnc_init()
     //bell202_init();
-#ifdef TEST_PACKET
-    //test_init((1 << PORT_N) - 1); // test packet for all port
-    test_init(1); // only port 0
-#endif
-
 #ifdef BUSY_PIN
     gpio_init(BUSY_PIN);
     gpio_set_dir(BUSY_PIN, true); // output
@@ -140,11 +128,6 @@ int main()
         // process uart I/O
         serial_input();
         serial_output();
-
-#ifdef TEST_PACKET
-        // send test packet
-        test();
-#endif
 
         // send beacon
         beacon();
