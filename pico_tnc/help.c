@@ -34,7 +34,6 @@ static const char *const help_lines_en[] = {
     "TXDELAY (txdelay n 0<n<201 n is number of delay flags to send)",
     "CALIBRATE (Calibrate Mode - Testing Only)",
     "CONverse (con)",
-    "",
     NULL,
 };
 
@@ -61,7 +60,6 @@ static const char *const help_lines_ja_utf8[] = {
     "TXDELAY (txdelay n 0<n<201, nは送信前フラグ数)",
     "CALIBRATE (calibrateモード - テスト専用)",
     "CONverse (con)",
-    "",
     NULL,
 };
 
@@ -88,6 +86,7 @@ static bool help_use_sjis;
 static bool help_show_config_warning;
 static const char *const *help_lines;
 static const char *const *help_warning_lines;
+static bool help_warning_gap_pending = false;
 
 static bool is_eol_or_space(int ch)
 {
@@ -209,6 +208,7 @@ bool help_handle_command(tty_t *ttyp, uint8_t *buf, int len)
     help_warning_line_idx = 0;
     help_active = true;
     help_ok_pending = false;
+    help_warning_gap_pending = false;
     help_show_config_warning = !param.mycall.call[0] || !param.unproto[0].call[0];
 
     return true;
@@ -223,6 +223,26 @@ void help_poll(void)
 {
     if (help_active) {
         const char *line;
+
+        line = help_lines[help_line_idx];
+        if (line) {
+            if (help_use_sjis) {
+                uint8_t sjis_line_buf[256];
+                int sjis_len = utf8_to_sjis_line(line, sjis_line_buf, sizeof(sjis_line_buf));
+                tty_write(help_ttyp, sjis_line_buf, sjis_len);
+            } else {
+                tty_write_str(help_ttyp, line);
+            }
+            tty_write_str(help_ttyp, "\r\n");
+            help_line_idx++;
+            return;
+        }
+
+        if (help_show_config_warning && !help_warning_gap_pending) {
+            help_warning_gap_pending = true;
+            tty_write_str(help_ttyp, "\r\n");
+            return;
+        }
 
         if (help_show_config_warning) {
             line = help_warning_lines[help_warning_line_idx];
@@ -240,22 +260,6 @@ void help_poll(void)
             }
 
             help_show_config_warning = false;
-            tty_write_str(help_ttyp, "\r\n");
-            return;
-        }
-
-        line = help_lines[help_line_idx];
-
-        if (line) {
-            if (help_use_sjis) {
-                uint8_t sjis_line_buf[256];
-                int sjis_len = utf8_to_sjis_line(line, sjis_line_buf, sizeof(sjis_line_buf));
-                tty_write(help_ttyp, sjis_line_buf, sjis_len);
-            } else {
-                tty_write_str(help_ttyp, line);
-            }
-            tty_write_str(help_ttyp, "\r\n");
-            help_line_idx++;
             return;
         }
 
