@@ -201,6 +201,7 @@ typedef struct TNC_PARAM {
     callsign_t unproto[UNPROTO_N];
     uint8_t btext[BTEXT_LEN + 1];
     uint8_t txdelay;
+    uint16_t axhang;
     uint8_t gps;
     uint8_t mon;
     uint8_t digi;
@@ -253,6 +254,7 @@ enum SEND_STATE {
     SP_SEND_FLAGS,
     SP_DATA_START,
     SP_DATA,
+    SP_PTT_HANG,
     SP_ERROR,
     SP_CALIBRATE,
     SP_CALIBRATE_OFF,

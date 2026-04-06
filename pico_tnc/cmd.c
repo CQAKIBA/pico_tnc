@@ -487,6 +487,66 @@ static bool cmd_txdelay(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+static bool parse_axhang_ms(uint8_t *buf, int *value_ms)
+{
+    uint8_t *p = buf;
+    char *end;
+    double value;
+    double scaled;
+
+    while (*p == ' ') p++;
+    if (!*p) return false;
+
+    value = strtod((char *)p, &end);
+    if (end == (char *)p) return false;
+    if (value < 0.0) return false;
+
+    while (*end == ' ') end++;
+
+    if (*end == '\0') {
+        // backward compatibility: unitless value means 10ms units
+        scaled = value * 10.0;
+    } else if (!strncasecmp(end, "ms", 2)) {
+        end += 2;
+        while (*end == ' ') end++;
+        if (*end) return false;
+        scaled = value;
+    } else if (tolower(*end) == 's') {
+        end++;
+        while (*end == ' ') end++;
+        if (*end) return false;
+        scaled = value * 1000.0;
+    } else {
+        return false;
+    }
+
+    *value_ms = (int)(scaled + 0.5);
+
+    if (*value_ms < 0 || *value_ms > 1000) return false;
+
+    return true;
+}
+
+static bool cmd_axhang(tty_t *ttyp, uint8_t *buf, int len)
+{
+    if (buf && buf[0]) {
+        int t;
+
+        if (!parse_axhang_ms(buf, &t)) return false;
+
+        param.axhang = t;
+
+    } else {
+        uint8_t temp[16];
+
+        tty_write_str(ttyp, "AXHANG ");
+        tty_write(ttyp, temp, snprintf(temp, sizeof(temp), "%ums", param.axhang));
+        tty_write_str(ttyp, "\r\n");
+    }
+
+    return true;
+}
+
 static bool cmd_calibrate(tty_t *ttyp, uint8_t *buf, int len)
 {
     //tty_write_str(ttyp, "CALIBRATE\r\n");
@@ -564,6 +624,9 @@ static bool cmd_disp(tty_t *ttyp, uint8_t *buf, int len)
     // txdelay
     cmd_txdelay(ttyp, NULL, 0);
 
+    // axhang
+    cmd_axhang(ttyp, NULL, 0);
+
     // gps
     cmd_gps(ttyp, NULL, 0);
 
@@ -608,6 +671,7 @@ static const cmd_t cmd_list[] = {
     { "ECHO", 4, cmd_echo, },
     { "GPS", 3, cmd_gps, },
     { "TXDELAY", 7, cmd_txdelay, },
+    { "AXHANG", 6, cmd_axhang, },
     { "CALIBRATE", 9, cmd_calibrate, },
     { "CONVERSE", 8, cmd_converse, },
     { "K", 1, cmd_converse, },

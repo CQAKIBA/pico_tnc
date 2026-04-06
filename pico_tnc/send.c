@@ -371,6 +371,11 @@ void send(void)
                 }
                 if (tp->send_len > 0) break;
                 tp->cnt_one = 0;                // bit stuffing counter clear
+                if (queue_is_empty(&tp->send_queue)) {
+                    tp->send_time = tnc_time();
+                    tp->send_state = SP_PTT_HANG;
+                    continue;
+                }
                 tp->send_state = SP_DATA_START;
                 /* FALLTHROUGH */
 
@@ -415,6 +420,19 @@ void send(void)
                 }
                 --tp->send_len;
                 tp->send_data = data;
+                continue;
+
+            case SP_PTT_HANG:
+                if (!queue_is_empty(&tp->send_queue)) {
+                    tp->send_state = SP_DATA_START;
+                    continue;
+                }
+                if ((tnc_time() - tp->send_time) * 10 >= param.axhang) {
+                    tp->send_state = SP_IDLE;
+                    break;
+                }
+                if (!send_byte(tp, AX25_FLAG, false)) break;
+                send_start(tp);
                 continue;
 
             case SP_ERROR:

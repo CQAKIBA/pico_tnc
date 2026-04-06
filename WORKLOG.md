@@ -286,3 +286,40 @@ Adjust UTF-8→Shift_JIS centralization so pure ASCII is not listed in the gener
 ### Risks / TODO
 - Table lookup remains linear search per non-ASCII character; acceptable for help text volume.
 - Queue behavior and `QUEUE_SIZE` remain unchanged by this adjustment.
+
+## 2026-04-06
+
+### Summary
+Implemented AXHANG end-to-end and then refined it to modern ms-based UX:
+- added AXHANG parameter, command, DISP output, and TX state-machine hang handling
+- transitioned AXHANG internal unit to milliseconds with parser support for decimals and unit suffixes (`ms`, `s`)
+- kept backward compatibility where unitless numeric input is treated as legacy 10ms units
+- updated AXHANG storage type to `uint16_t`
+- rounded sub-millisecond inputs to nearest millisecond and set valid range to `0..1000ms`
+
+### Files changed
+- `pico_tnc/tnc.h`
+- `pico_tnc/tnc.c`
+- `pico_tnc/cmd.c`
+- `pico_tnc/send.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- `AXHANG` now stores and displays milliseconds (e.g. `AXHANG 150ms`), stored as `uint16_t`.
+- Input examples:
+  - `axhang 12` -> 120ms (legacy-compatible)
+  - `axhang 12.5` -> 125ms (legacy-compatible)
+  - `axhang 250ms` -> 250ms
+  - `axhang 0.35s` -> 350ms
+- Fractional inputs are rounded to nearest millisecond.
+- Send hang timeout compare uses elapsed tick time converted to milliseconds.
+
+### Validation status
+- `cmake -S . -B build && cmake --build build -j4` attempted; build did not run because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured in this environment.
+
+### Remaining risks / TODOs
+- `param_t` layout changed (`axhang` unit/width/type), so persisted flash data from older firmware may decode unexpectedly; startup clamp enforces `0..1000ms`.
+- AXHANG command/help text became slightly longer; no queue-size constants were changed and output remains line-based.
