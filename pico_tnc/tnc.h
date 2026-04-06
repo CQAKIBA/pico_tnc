@@ -200,7 +200,8 @@ typedef struct TNC_PARAM {
     callsign_t myalias;
     callsign_t unproto[UNPROTO_N];
     uint8_t btext[BTEXT_LEN + 1];
-    uint8_t txdelay;
+    uint16_t txdelay;
+    uint16_t axdelay;
     uint16_t axhang;
     uint8_t gps;
     uint8_t mon;

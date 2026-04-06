@@ -41,6 +41,7 @@ param_t param = {
     .myalias = { 0, 0 },
     .btext = "",
     .txdelay = 100,
+    .axdelay = 60,
     .axhang = 100,
     .echo = 1,
     .gps = 0,
@@ -113,12 +114,23 @@ void tnc_init(void)
     // read flash
     flash_read(&param, sizeof(param));
 
+    if (param.txdelay > 1000) {
+        param.txdelay = 1000;
+    }
+
+    if (param.axdelay > 1000) {
+        param.axdelay = (uint16_t)((param.txdelay * 2 + 1) / 3);
+        if (param.axdelay > 1000) {
+            param.axdelay = 1000;
+        }
+    }
+
     if (param.axhang > 1000) {
         param.axhang = 1000;
     }
 
     // set kiss txdelay
-    if (param.txdelay > 0) {
-        tnc[0].kiss_txdelay = param.txdelay * 2 / 3;
+    if (param.axdelay > 0) {
+        tnc[0].kiss_txdelay = (param.axdelay + 5) / 10;
     }
 }

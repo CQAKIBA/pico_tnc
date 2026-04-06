@@ -323,3 +323,37 @@ Implemented AXHANG end-to-end and then refined it to modern ms-based UX:
 ### Remaining risks / TODOs
 - `param_t` layout changed (`axhang` unit/width/type), so persisted flash data from older firmware may decode unexpectedly; startup clamp enforces `0..1000ms`.
 - AXHANG command/help text became slightly longer; no queue-size constants were changed and output remains line-based.
+
+## 2026-04-06
+
+### Request
+Add `cmd_axdelay()` and register `AXDELAY`, while modernizing delay UX for TX delay handling with millisecond-based `uint16_t` storage and unit parsing.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/tnc.h`
+- `pico_tnc/tnc.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added `AXDELAY` command and command table registration.
+- `TXDELAY`/`AXDELAY` now parse `n`, `nms`, and `ns` with decimal input support.
+  - unitless `n` keeps backward compatibility as legacy `10ms` units.
+  - `ms` uses milliseconds directly.
+  - `s` scales by `1000`.
+  - sub-millisecond values are rounded to nearest millisecond.
+  - accepted range is `0..1000ms`.
+- Added separate internal delay parameters: `txdelay` and `axdelay` (both `uint16_t`, milliseconds).
+- `DISP` now prints both `TXDELAY` and `AXDELAY`.
+- Reworked `DISP` output into sectioned blocks (`Station`, `Network`, `Auto Operation`, `GPS / Sensor`, `Hardware`, `Diagnostics`) for easier reading while preserving all relevant fields.
+- TX delay initialization keeps original defaults (`txdelay=100`, `axdelay=60`) while runtime conversion uses prior formula relationships (`2/3` and inverse).
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- `param_t` layout changed by adding `axdelay` and widening `txdelay`; persisted flash settings from older firmware may map unexpectedly until rewritten.
+- Command/help output lines became slightly longer; queue constants and buffering sizes were not changed.

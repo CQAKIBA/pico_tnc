@@ -463,24 +463,26 @@ static bool cmd_gps(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+static bool parse_axhang_ms(uint8_t *buf, int *value_ms);
+
 static bool cmd_txdelay(tty_t *ttyp, uint8_t *buf, int len)
 {
     if (buf && buf[0]) {
-        
-        int t = atoi(buf);
+        int t;
 
-        if (t <= 0 || t > 200) return false;
+        if (!parse_axhang_ms(buf, &t)) return false;
 
         param.txdelay = t;
+        param.axdelay = (uint16_t)((param.txdelay * 2 + 1) / 3);
 
-        // set txdelay
-        tnc[0].kiss_txdelay = param.txdelay * 2 / 3;
+        // set txdelay for KISS (10ms unit)
+        tnc[0].kiss_txdelay = (param.axdelay + 5) / 10;
 
     } else {
-        uint8_t temp[8];
+        uint8_t temp[16];
 
         tty_write_str(ttyp, "TXDELAY ");
-        tty_write(ttyp, temp, snprintf(temp, 8, "%u", param.txdelay));
+        tty_write(ttyp, temp, snprintf(temp, sizeof(temp), "%ums", param.txdelay));
         tty_write_str(ttyp, "\r\n");
     }
 
@@ -523,6 +525,33 @@ static bool parse_axhang_ms(uint8_t *buf, int *value_ms)
     *value_ms = (int)(scaled + 0.5);
 
     if (*value_ms < 0 || *value_ms > 1000) return false;
+
+    return true;
+}
+
+static bool cmd_axdelay(tty_t *ttyp, uint8_t *buf, int len)
+{
+    if (buf && buf[0]) {
+        int t;
+
+        if (!parse_axhang_ms(buf, &t)) return false;
+
+        param.axdelay = t;
+        param.txdelay = (uint16_t)((param.axdelay * 3 + 1) / 2);
+        if (param.txdelay > 1000) {
+            param.txdelay = 1000;
+        }
+
+        // set txdelay for KISS (10ms unit)
+        tnc[0].kiss_txdelay = (param.axdelay + 5) / 10;
+
+    } else {
+        uint8_t temp[16];
+
+        tty_write_str(ttyp, "AXDELAY ");
+        tty_write(ttyp, temp, snprintf(temp, sizeof(temp), "%ums", param.axdelay));
+        tty_write_str(ttyp, "\r\n");
+    }
 
     return true;
 }
@@ -612,47 +641,45 @@ static bool cmd_kiss(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+static void disp_section(tty_t *ttyp, uint8_t const *title)
+{
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "=== ");
+    tty_write_str(ttyp, title);
+    tty_write_str(ttyp, " ===\r\n");
+}
+
 static bool cmd_disp(tty_t *ttyp, uint8_t *buf, int len)
 {
-    uint8_t temp[10]; // 6 + '-' + 2 + '\0'
+    (void)buf;
+    (void)len;
 
     tty_write_str(ttyp, "\r\n");
 
-    // echo
-    cmd_echo(ttyp, NULL, 0);
-
-    // txdelay
-    cmd_txdelay(ttyp, NULL, 0);
-
-    // axhang
-    cmd_axhang(ttyp, NULL, 0);
-
-    // gps
-    cmd_gps(ttyp, NULL, 0);
-
-    // monitor
-    cmd_monitor(ttyp, NULL, 0);
-
-    // digipeat
-    cmd_digipeat(ttyp, NULL, 0);
-
-    // beacon
-    cmd_beacon(ttyp, NULL, 0);
-
-    // unproto
-    cmd_unproto(ttyp, NULL, 0);
-
-    // mycall
+    disp_section(ttyp, "Station");
     cmd_mycall(ttyp, NULL, 0);
-
-    // myalias
     cmd_myalias(ttyp, NULL, 0);
 
-    // btext
-    cmd_btext(ttyp, NULL, 0);
+    disp_section(ttyp, "Network");
+    cmd_unproto(ttyp, NULL, 0);
+    cmd_monitor(ttyp, NULL, 0);
 
-    //usb_write("\r\n", 2);
-    
+    disp_section(ttyp, "Auto Operation");
+    cmd_beacon(ttyp, NULL, 0);
+    cmd_btext(ttyp, NULL, 0);
+    cmd_digipeat(ttyp, NULL, 0);
+
+    disp_section(ttyp, "GPS / Sensor");
+    cmd_gps(ttyp, NULL, 0);
+
+    disp_section(ttyp, "Hardware");
+    cmd_txdelay(ttyp, NULL, 0);
+    cmd_axdelay(ttyp, NULL, 0);
+    cmd_axhang(ttyp, NULL, 0);
+
+    disp_section(ttyp, "Diagnostics");
+    cmd_echo(ttyp, NULL, 0);
+
     return true;
 }
 
@@ -671,6 +698,7 @@ static const cmd_t cmd_list[] = {
     { "ECHO", 4, cmd_echo, },
     { "GPS", 3, cmd_gps, },
     { "TXDELAY", 7, cmd_txdelay, },
+    { "AXDELAY", 7, cmd_axdelay, },
     { "AXHANG", 6, cmd_axhang, },
     { "CALIBRATE", 9, cmd_calibrate, },
     { "CONVERSE", 8, cmd_converse, },
