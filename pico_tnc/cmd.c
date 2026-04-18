@@ -75,12 +75,239 @@ bool calibrate_mode = false;
 uint8_t calibrate_idx = 0;
 
 typedef enum {
-    PRIVKEY_SHOW_IDLE = 0,
-    PRIVKEY_SHOW_WAIT_CONFIRM,
-} privkey_show_state_t;
+    CMD_PENDING_IDLE = 0,
+    CMD_PENDING_PRIVKEY_SHOW_CONFIRM,
+    CMD_PENDING_PRIVKEY_GEN_COLLECTING,
+} cmd_pending_state_t;
 
-static privkey_show_state_t privkey_show_state = PRIVKEY_SHOW_IDLE;
-static tty_t *privkey_show_ttyp = NULL;
+static cmd_pending_state_t cmd_pending_state = CMD_PENDING_IDLE;
+static tty_t *cmd_pending_ttyp = NULL;
+
+typedef struct {
+    tty_t *ttyp;
+    uint8_t state[32];
+    uint8_t pending_secret[32];
+    uint32_t event_index;
+    uint64_t prev_event_us;
+    uint32_t burst_len;
+    int remaining;
+    bool has_pending_secret;
+    mona_addr_type_t active_type;
+} privkey_gen_ctx_t;
+
+static privkey_gen_ctx_t privkey_gen_ctx;
+
+static const uint8_t SECP256K1_ORDER[32] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
+    0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
+    0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41
+};
+
+static void privkey_gen_reset(void)
+{
+    memset(&privkey_gen_ctx, 0, sizeof(privkey_gen_ctx));
+}
+
+static bool secp256k1_secret_is_valid(uint8_t const secret[32])
+{
+    int i;
+
+    for (i = 0; i < 32; ++i) {
+        if (secret[i] != 0) break;
+    }
+    if (i == 32) return false;
+
+    for (i = 0; i < 32; ++i) {
+        if (secret[i] < SECP256K1_ORDER[i]) return true;
+        if (secret[i] > SECP256K1_ORDER[i]) return false;
+    }
+    return false;
+}
+
+static bool privkey_gen_mix(uint8_t state32[32], uint8_t const *payload, size_t payload_len)
+{
+    uint8_t mixbuf[128];
+    const mona_crypto_vtable_t *crypto = mona_get_crypto();
+
+    if (!crypto || !crypto->sha256) return false;
+    if (32 + payload_len > sizeof(mixbuf)) return false;
+
+    memcpy(mixbuf, state32, 32);
+    memcpy(mixbuf + 32, payload, payload_len);
+    return crypto->sha256(mixbuf, 32 + payload_len, state32) ? true : false;
+}
+
+static void privkey_gen_print_remaining_inline(tty_t *ttyp, int remaining)
+{
+    char s[64];
+    int n = snprintf(s, sizeof(s), "\rRemaining entropy counter: %3d   ", remaining);
+    if (n > 0) tty_write(ttyp, (uint8_t *)s, n);
+}
+
+static int privkey_gen_event_score(uint64_t delta_us, uint32_t burst_len, int ch)
+{
+    int dec;
+
+    if (burst_len >= 32) dec = 1;
+    else if (burst_len >= 12) dec = 2;
+    else if (delta_us < 1000) dec = 2;
+    else if (delta_us < 7000) dec = 4;
+    else if (delta_us < 80000) dec = 7;
+    else dec = 10;
+
+    if (ch == '\r' || ch == '\n' || ch == '\t') {
+        if (dec > 2) dec = 2;
+    }
+    return dec;
+}
+
+static bool privkey_gen_derive_secret(uint8_t out_secret[32], uint8_t const state32[32])
+{
+    const mona_crypto_vtable_t *crypto = mona_get_crypto();
+    uint8_t buf[48];
+    uint32_t round = 0;
+
+    if (!crypto || !crypto->sha256) return false;
+
+    memcpy(buf, state32, 32);
+    memcpy(buf + 32, "privkey-gen-seed", 16);
+
+    while (round < 1024) {
+        memcpy(buf + 32, &round, sizeof(round));
+        if (!crypto->sha256(buf, sizeof(buf), out_secret)) return false;
+        if (secp256k1_secret_is_valid(out_secret)) return true;
+        memcpy(buf, out_secret, 32);
+        round++;
+    }
+    return false;
+}
+
+static bool privkey_gen_prepare_secret(void)
+{
+    bool ok = privkey_gen_derive_secret(privkey_gen_ctx.pending_secret, privkey_gen_ctx.state);
+    if (!ok) return false;
+    privkey_gen_ctx.has_pending_secret = true;
+    return true;
+}
+
+static bool privkey_gen_save_pending_secret(void)
+{
+    mona_keyslot_t slot;
+
+    if (!privkey_gen_ctx.has_pending_secret) return false;
+    if (mona_keyslot_init_from_secret(&slot, privkey_gen_ctx.pending_secret, privkey_gen_ctx.active_type) != MONA_OK) {
+        return false;
+    }
+
+    memcpy(param.mona_privkey, slot.secret, sizeof(param.mona_privkey));
+    param.mona_privkey_valid = slot.valid ? 1 : 0;
+    param.mona_privkey_compressed = slot.compressed ? 1 : 0;
+    param.mona_active_type = mona_addr_type_to_param(slot.active_type);
+    return true;
+}
+
+static void privkey_gen_abort(tty_t *ttyp)
+{
+    cmd_pending_state = CMD_PENDING_IDLE;
+    cmd_pending_ttyp = NULL;
+    privkey_gen_reset();
+    tty_write_str(ttyp, "\r\nAborted by user.\r\n");
+    tty_write_str(ttyp, "cmd: ");
+}
+
+static bool privkey_gen_start(tty_t *ttyp, mona_addr_type_t type)
+{
+    uint8_t init_buf[32];
+    uint64_t now_us = time_us_64();
+    uint32_t tick = tnc_time();
+    uint32_t rnd = get_rand_32();
+
+    privkey_gen_reset();
+    privkey_gen_ctx.ttyp = ttyp;
+    privkey_gen_ctx.active_type = type;
+    privkey_gen_ctx.remaining = 640;
+
+    memset(init_buf, 0, sizeof(init_buf));
+    memcpy(init_buf + 0, &now_us, sizeof(now_us));
+    memcpy(init_buf + 8, &tick, sizeof(tick));
+    memcpy(init_buf + 12, &rnd, sizeof(rnd));
+    memcpy(init_buf + 16, &param.txdelay, sizeof(param.txdelay));
+    memcpy(init_buf + 20, &param.axdelay, sizeof(param.axdelay));
+    memcpy(init_buf + 22, &param.axhang, sizeof(param.axhang));
+    if (!privkey_gen_mix(privkey_gen_ctx.state, init_buf, sizeof(init_buf))) {
+        privkey_gen_reset();
+        return false;
+    }
+
+    tty_write_str(ttyp, "Initiating private key generation.\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "Please mash your keyboard randomly.\r\n");
+    tty_write_str(ttyp, "Press [ESC] to abort.\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "WARNING:\r\n");
+    tty_write_str(ttyp, "IF EXECUTED BY MISTAKE, PRESS [ESC] IMMEDIATELY!\r\n");
+    tty_write_str(ttyp, "\r\n");
+    privkey_gen_print_remaining_inline(ttyp, privkey_gen_ctx.remaining);
+    return true;
+}
+
+static bool privkey_gen_consume_char(tty_t *ttyp, int ch)
+{
+    uint8_t ev[48];
+    uint64_t now_us;
+    uint64_t delta_us;
+    int dec;
+    int remaining_before;
+    bool ok;
+
+    if (!privkey_gen_ctx.ttyp || ttyp != privkey_gen_ctx.ttyp) return false;
+    if (ch == '\x1b') {
+        privkey_gen_abort(ttyp);
+        return true;
+    }
+    if (ch == '\n') return true;
+
+    now_us = time_us_64();
+    if (privkey_gen_ctx.event_index == 0) delta_us = 0;
+    else delta_us = now_us - privkey_gen_ctx.prev_event_us;
+    privkey_gen_ctx.prev_event_us = now_us;
+
+    if (privkey_gen_ctx.event_index == 0 || delta_us > 12000) privkey_gen_ctx.burst_len = 1;
+    else privkey_gen_ctx.burst_len++;
+
+    remaining_before = privkey_gen_ctx.remaining;
+    dec = privkey_gen_event_score(delta_us, privkey_gen_ctx.burst_len, ch);
+    if (dec < 1) dec = 1;
+    privkey_gen_ctx.remaining -= dec;
+    if (privkey_gen_ctx.remaining < 0) privkey_gen_ctx.remaining = 0;
+
+    memset(ev, 0, sizeof(ev));
+    memcpy(ev + 0, &privkey_gen_ctx.event_index, sizeof(privkey_gen_ctx.event_index));
+    ev[4] = (uint8_t)ch;
+    memcpy(ev + 8, &now_us, sizeof(now_us));
+    memcpy(ev + 16, &delta_us, sizeof(delta_us));
+    memcpy(ev + 24, &privkey_gen_ctx.burst_len, sizeof(privkey_gen_ctx.burst_len));
+    memcpy(ev + 28, &remaining_before, sizeof(remaining_before));
+    memcpy(ev + 32, &dec, sizeof(dec));
+    if (!privkey_gen_mix(privkey_gen_ctx.state, ev, sizeof(ev))) return false;
+
+    privkey_gen_ctx.event_index++;
+    privkey_gen_print_remaining_inline(ttyp, privkey_gen_ctx.remaining);
+
+    if (privkey_gen_ctx.remaining == 0) {
+        ok = privkey_gen_prepare_secret();
+        tty_write_str(ttyp, "\r\n");
+        if (!ok) {
+            privkey_gen_abort(ttyp);
+            return true;
+        }
+        cmd_pending_state = CMD_PENDING_PRIVKEY_SHOW_CONFIRM;
+        tty_write_str(ttyp, "Private key generation complete.\r\n");
+        tty_write_str(ttyp, "Press [Enter] to save or [ESC] to abort.\r\n");
+    }
+    return true;
+}
 
 static uint8_t *read_call(uint8_t *buf, callsign_t *c)
 {
@@ -802,15 +1029,13 @@ static bool cmd_privkey(tty_t *ttyp, uint8_t *buf, int len)
     if (!strncasecmp((char *)p, "SHOW", 4) && (p[4] == '\0' || p[4] == ' ')) {
         if (!param.mona_privkey_valid) return false;
         privkey_show_print_notice(ttyp);
-        privkey_show_state = PRIVKEY_SHOW_WAIT_CONFIRM;
-        privkey_show_ttyp = ttyp;
+        cmd_pending_state = CMD_PENDING_PRIVKEY_SHOW_CONFIRM;
+        cmd_pending_ttyp = ttyp;
         return true;
     }
 
     if (!strncasecmp((char *)p, "GEN", 3) && (p[3] == '\0' || p[3] == ' ')) {
         mona_addr_type_t t = mona_param_to_addr_type(param.mona_active_type);
-        bool any_non_zero;
-        int i;
         p = skip_spaces(p + 3);
 
         if (*p) {
@@ -818,27 +1043,9 @@ static bool cmd_privkey(tty_t *ttyp, uint8_t *buf, int len)
             if (err != MONA_OK) return false;
         }
 
-        do {
-            for (i = 0; i < 32; i += 4) {
-                uint32_t r = get_rand_32();
-                memcpy(slot.secret + i, &r, sizeof(r));
-            }
-            any_non_zero = false;
-            for (i = 0; i < 32; ++i) {
-                if (slot.secret[i] != 0) {
-                    any_non_zero = true;
-                    break;
-                }
-            }
-        } while (!any_non_zero);
-
-        err = mona_keyslot_init_from_secret(&slot, slot.secret, t);
-        if (err != MONA_OK) return false;
-
-        memcpy(param.mona_privkey, slot.secret, sizeof(param.mona_privkey));
-        param.mona_privkey_valid = slot.valid ? 1 : 0;
-        param.mona_privkey_compressed = slot.compressed ? 1 : 0;
-        param.mona_active_type = mona_addr_type_to_param(slot.active_type);
+        if (!privkey_gen_start(ttyp, t)) return false;
+        cmd_pending_state = CMD_PENDING_PRIVKEY_GEN_COLLECTING;
+        cmd_pending_ttyp = ttyp;
         return true;
     }
 
@@ -940,32 +1147,68 @@ static const cmd_t cmd_list[] = {
 
 bool cmd_has_pending_input(void)
 {
-    return privkey_show_state != PRIVKEY_SHOW_IDLE;
+    return cmd_pending_state != CMD_PENDING_IDLE;
 }
 
 bool cmd_consume_pending_input(tty_t *ttyp, int ch)
 {
-    if (privkey_show_state != PRIVKEY_SHOW_WAIT_CONFIRM) return false;
-    if (ttyp != privkey_show_ttyp) return false;
-    if (ch == '\n') return true;
+    if (ttyp != cmd_pending_ttyp) return false;
 
-    if (param.echo) {
-        if (ch >= ' ' && ch <= '~') {
-            tty_write_char(ttyp, ch);
+    if (cmd_pending_state == CMD_PENDING_PRIVKEY_SHOW_CONFIRM) {
+        if (privkey_gen_ctx.has_pending_secret && privkey_gen_ctx.ttyp == ttyp) {
+            if (ch == '\n') return true;
+            if (ch == '\x1b') {
+                privkey_gen_abort(ttyp);
+                return true;
+            }
+            if (ch != '\r') return true;
+
+            if (!privkey_gen_save_pending_secret()) {
+                privkey_gen_abort(ttyp);
+                return true;
+            }
+
+            cmd_pending_state = CMD_PENDING_IDLE;
+            cmd_pending_ttyp = NULL;
+            privkey_gen_reset();
+
+            tty_write_str(ttyp, "Save complete.\r\n");
+            tty_write_str(ttyp, "Run the \"privkey show\" command to verify your new private key.\r\n");
+            tty_write_str(ttyp, "\r\n");
+            tty_write_str(ttyp, "CRITICAL NOTICE:\r\n");
+            tty_write_str(ttyp, "This key is your unique digital identity.\r\n");
+            tty_write_str(ttyp, "It can NEVER be recreated.\r\n");
+            tty_write_str(ttyp, "Please copy the key string immediately and store it in a secure location.\r\n");
+            tty_write_str(ttyp, "cmd: ");
+            return true;
         }
-        tty_write_str(ttyp, "\r\n");
+
+        if (ch == '\n') return true;
+
+        if (param.echo) {
+            if (ch >= ' ' && ch <= '~') {
+                tty_write_char(ttyp, ch);
+            }
+            tty_write_str(ttyp, "\r\n");
+        }
+
+        if (ch == '\r') {
+            privkey_show_print_body(ttyp);
+        } else {
+            tty_write_str(ttyp, "Aborted by user.\r\n");
+        }
+
+        cmd_pending_state = CMD_PENDING_IDLE;
+        cmd_pending_ttyp = NULL;
+        tty_write_str(ttyp, "cmd: ");
+        return true;
     }
 
-    if (ch == '\r') {
-        privkey_show_print_body(ttyp);
-    } else {
-        tty_write_str(ttyp, "Aborted by user.\r\n");
+    if (cmd_pending_state == CMD_PENDING_PRIVKEY_GEN_COLLECTING) {
+        return privkey_gen_consume_char(ttyp, ch);
     }
 
-    privkey_show_state = PRIVKEY_SHOW_IDLE;
-    privkey_show_ttyp = NULL;
-    tty_write_str(ttyp, "cmd: ");
-    return true;
+    return false;
 }
 
 

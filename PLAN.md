@@ -13,5 +13,6 @@
 - [x] Add `privkey gen [m|p|mona1|p2pkh|p2sh|p2wpkh]` to generate/store keyslot seed.
 - [x] Add `privkey set <WIF or RAW>` to import/store keyslot with typed-WIF active type normalization.
 - [x] Add `privkey show` with interactive confirmation and persisted-key display.
+- [x] Rework `privkey gen [type]` to interactive entropy collection (input bytes + timing) and secp256k1-range-safe key derivation.
 - [ ] Add `privkey type` command set.
 - [ ] Add Pico crypto backend and wire sign/verify commands.

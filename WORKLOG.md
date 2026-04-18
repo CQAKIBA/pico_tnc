@@ -448,3 +448,83 @@ Add `cmd_axdelay()` and register `AXDELAY`, while modernizing delay UX for TX de
 ### Remaining risks / TODOs
 - `param_t` layout changed by adding `axdelay` and widening `txdelay`; persisted flash settings from older firmware may map unexpectedly until rewritten.
 - Command/help output lines became slightly longer; queue constants and buffering sizes were not changed.
+
+## 2026-04-18
+
+### Request
+Implement `privkey gen [type]` entropy-collection mode using user key input bytes + timing, then generate/store a new private key with normalized active type.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+- `PLAN.md`
+
+### Behavior changes
+- Replaced immediate RNG-based `privkey gen` with interactive entropy collection mode:
+  - command prints English guidance and starts `Remaining entropy counter: 640`.
+  - per-key event mixes input byte, event index, high-resolution time, delta from previous event, burst length, and counter values into 32-byte internal hash state.
+  - pasted/line-buffered bursts are accepted but score lower, so the visible counter decreases more slowly.
+- Added `privkey gen` pending-input state machine that runs in existing TTY pending-input path (no queue model changes).
+- On counter completion, derives a 32-byte secret from the accumulated state and re-hashes until a valid secp256k1 private-key range value is obtained.
+- Stores generated key into persistent settings as:
+  - `mona_privkey[32]` raw secret
+  - `mona_privkey_compressed = 1` (via keyslot init)
+  - `mona_active_type` normalized to `p2pkh|p2sh|p2wpkh`
+  - `mona_privkey_valid = 1`
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- Entropy quality scoring uses timing/burst heuristics only; it is intentionally lightweight and not a certified TRNG assessment.
+- Entropy collection now emits frequent short progress lines (`Remaining entropy counter: ...`); queue sizes were left unchanged, but heavy host-side buffering could still make visual updates appear bursty.
+
+## 2026-04-18
+
+### Request
+Refine `privkey gen` UX with explicit operation/progress confirmation, ESC abort path, inline countdown overwrite, and save confirmation (`Enter` to save / `ESC` to abort).
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Generation start message updated to explicit operation notices:
+  - `Initiating private key generation.`
+  - keyboard-mash guidance
+  - ESC abort warning block
+- Progress counter is now shown inline and updated with carriage-return overwrite on the same line as much as possible.
+- When entropy collection completes, key is prepared but not persisted immediately:
+  - shows `Private key generation complete.`
+  - waits for `[Enter]` to save or `[ESC]` to abort.
+- On save, prints completion + critical key backup warning block.
+- On abort (during collection or save confirmation), prints exactly `Aborted by user.` and returns to prompt without saving.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- Inline overwrite display behavior may vary by terminal emulation and host buffering; queue size and buffering constants were not changed.
+
+## 2026-04-18
+
+### Request
+Clarify pending-input state naming so it is not tied to `privkey show` only.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Renamed the pending-input state type/variables to command-generic names:
+  - `privkey_show_state_t` -> `cmd_pending_state_t`
+  - `privkey_show_state` -> `cmd_pending_state`
+  - `privkey_show_ttyp` -> `cmd_pending_ttyp`
+- Updated enum value names to clearly separate `privkey show` confirm and `privkey gen` collecting states.
+- No functional behavior change; this is a readability/maintenance naming cleanup.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- None newly introduced by this rename-only cleanup.
