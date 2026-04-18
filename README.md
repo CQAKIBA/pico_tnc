@@ -29,7 +29,7 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 - `axhang n|nms|ns` : hold PTT after frame end (`0..1000ms`, unitless `n` keeps legacy `10ms` units)
 - `privkey show` : display persisted key material after interactive security confirmation
 - `privkey gen [m|p|mona1|p2pkh|p2sh|p2wpkh]` : generate and store Monacoin private key (32-byte raw + compressed + active type)
-- `privkey set <WIF or RAW>` : import and store Monacoin private key; typed WIF updates active type, untyped WIF/RAW keeps current type
+- `privkey set [m|p|mona1|p2pkh|p2sh|p2wpkh|WIF|RAW]` : set active address type only (`m/p/mona1/...`) or import/store private key (`WIF/RAW`); typed WIF updates active type, untyped WIF/RAW keeps current type
 
 ## How to build
 

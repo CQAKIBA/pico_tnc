@@ -2,6 +2,81 @@
 
 This file tracks implementation work, validation, and remaining risks.
 
+## 2026-04-18
+
+### Summary
+Improved `privkey show` failure diagnostics for address derivation so runtime errors are actionable when crypto backend capabilities are insufficient.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- When address derivation fails in `privkey show`, output now includes:
+  - `detail` line with `mona_strerror(err)` text
+  - `note` line indicating full crypto backend requirement when minimal backend is active
+- Address derivation path now goes through `libmona_pico` keyslot API (`mona_keyslot_get_all`) for consistency with keyslot abstraction.
+- Existing derived-address output format remains unchanged on success.
+
+### Validation status
+- Static review confirms failure path now emits explicit diagnostic lines after ADDRESS block.
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`, but full build verification could not complete because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured in this environment.
+
+### Remaining risks / TODO
+- This change improves diagnosability only; actual address derivation still requires implementing/enabling full crypto primitives (RIPEMD160 + secp256k1 path) in firmware backend.
+
+## 2026-04-18
+
+### Summary
+Implemented Monacoin address derivation in `privkey show` so the address section now attempts real `p2pkh (M)`, `p2sh (P)`, and `p2wpkh (mona1)` calculation from the persisted private key instead of fixed placeholder text.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `privkey show` now calls `mona_keypair_from_secret()` and prints derived addresses:
+  - `addr_M` for p2pkh
+  - `addr_P` for p2sh
+  - `addr_mona1` for p2wpkh
+- If derivation fails, each line prints `(calculation failed)` instead of `(unavailable in this stage)`.
+- Queue behavior and output flow are unchanged; only line contents were updated.
+
+### Validation status
+- Static review confirms placeholder lines were replaced with derive-and-print logic in the `privkey show` path.
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`, but full build verification could not complete because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured in this environment.
+
+### Remaining risks / TODO
+- Current backend (`mona_backend_minimal`) still reports `mona_backend_minimal_has_full_crypto() == false`; if required crypto primitives remain unavailable at runtime, address lines will show `(calculation failed)`.
+
+## 2026-04-18
+
+### Summary
+Implemented `privkey` type switching via `privkey set [m|p|mona1|p2pkh|p2sh|p2wpkh]` so users can normalize and persist only the active address type without re-importing key material.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `PLAN.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- `privkey set` now accepts address-type aliases (`m`, `p`, `mona1`) and canonical names (`p2pkh`, `p2sh`, `p2wpkh`) as a type-only operation.
+- Type-only `privkey set` normalizes through `mona_parse_addr_type()` and stores the canonical active type in persistent parameters.
+- Existing key import behavior (`privkey set <WIF or RAW>`) remains unchanged.
+- Help and README command descriptions now document combined type/WIF/RAW `set` usage.
+
+### Validation status
+- Static command-path review confirms:
+  - type-only `set` path is evaluated before WIF/RAW parsing.
+  - type normalization uses the same parser as `privkey gen`.
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`, but full build verification could not complete because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured in this environment.
+
+### Remaining risks / TODO
+- `privkey type` is currently implemented through `privkey set <type>` UX; if a dedicated subcommand syntax is required later, parser/help text should be extended in a separate step.
+
 ## 2026-04-17
 
 ### Summary

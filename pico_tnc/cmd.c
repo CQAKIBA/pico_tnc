@@ -968,12 +968,15 @@ static void privkey_show_print_notice(tty_t *ttyp)
 static void privkey_show_print_body(tty_t *ttyp)
 {
     mona_keyslot_t slot;
+    mona_address_info_t addrs;
     char raw_hex[65];
     char wif_p2pkh[MONA_WIF_MAX + 8];
     char wif_p2sh[MONA_WIF_MAX + 20];
     char wif_p2wpkh[MONA_WIF_MAX + 16];
+    mona_err_t err;
 
     memset(&slot, 0, sizeof(slot));
+    memset(&addrs, 0, sizeof(addrs));
     memcpy(slot.secret, param.mona_privkey, sizeof(slot.secret));
     slot.valid = param.mona_privkey_valid ? true : false;
     slot.compressed = param.mona_privkey_compressed ? true : false;
@@ -1004,10 +1007,27 @@ static void privkey_show_print_body(tty_t *ttyp)
     tty_write_str(ttyp, "* This is your identification key.\r\n");
     tty_write_str(ttyp, "* Please be sure to save a backup of it.\r\n");
     tty_write_str(ttyp, "*\r\n");
+
+    err = mona_keyslot_get_all(&slot, &addrs, NULL, 0);
     tty_write_str(ttyp, "* ADDRESS\r\n");
-    tty_write_str(ttyp, "*   p2pkh (M)     : (unavailable in this stage)\r\n");
-    tty_write_str(ttyp, "*   p2sh  (P)     : (unavailable in this stage)\r\n");
-    tty_write_str(ttyp, "*   p2wpkh(mona1) : (unavailable in this stage)\r\n");
+    tty_write_str(ttyp, "*   p2pkh (M)     : ");
+    tty_write_str(ttyp, (err == MONA_OK) ? addrs.addr_M : "(calculation failed)");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "*   p2sh  (P)     : ");
+    tty_write_str(ttyp, (err == MONA_OK) ? addrs.addr_P : "(calculation failed)");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "*   p2wpkh(mona1) : ");
+    tty_write_str(ttyp, (err == MONA_OK) ? addrs.addr_mona1 : "(calculation failed)");
+    tty_write_str(ttyp, "\r\n");
+    if (err != MONA_OK) {
+        tty_write_str(ttyp, "*   detail        : ");
+        tty_write_str(ttyp, mona_strerror(err));
+        tty_write_str(ttyp, "\r\n");
+        if (!mona_backend_minimal_has_full_crypto()) {
+            tty_write_str(ttyp, "*   note          : full crypto backend is required for address derivation.\r\n");
+        }
+    }
+    tty_write_str(ttyp, "\r\n");
     tty_write_str(ttyp, "*\r\n");
     tty_write_str(ttyp, "* Active : ");
     tty_write_str(ttyp, mona_param_type_name(param.mona_active_type));
@@ -1022,7 +1042,7 @@ static bool cmd_privkey(tty_t *ttyp, uint8_t *buf, int len)
     uint8_t *p;
 
     if (!buf || !buf[0]) {
-        tty_write_str(ttyp, "PRIVKEY show, gen [m|p|mona1|p2pkh|p2sh|p2wpkh], set <WIF or RAW>\r\n");
+        tty_write_str(ttyp, "PRIVKEY show, gen [m|p|mona1|p2pkh|p2sh|p2wpkh], set [m|p|mona1|p2pkh|p2sh|p2wpkh|WIF|RAW]\r\n");
         return true;
     }
 
@@ -1054,8 +1074,16 @@ static bool cmd_privkey(tty_t *ttyp, uint8_t *buf, int len)
     }
 
     if (!strncasecmp((char *)p, "SET", 3) && p[3] == ' ') {
+        mona_addr_type_t t;
+
         p = skip_spaces(p + 3);
         if (!*p) return false;
+
+        err = mona_parse_addr_type((char *)p, &t);
+        if (err == MONA_OK) {
+            param.mona_active_type = mona_addr_type_to_param(t);
+            return true;
+        }
 
         memset(&slot, 0, sizeof(slot));
         if (param.mona_privkey_valid) {
