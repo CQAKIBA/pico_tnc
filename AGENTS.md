@@ -41,5 +41,43 @@ If the task is part of a multi-step effort, also update `PLAN.md`.
 The current planned work around help output is tracked in `PLAN.md`.
 
 ## Structural separation
+
 The contents of libmona_pico should be separated into layers and not mixed together.
+
+* Core layer:
+
+  * `mona_compat.c`
+  * `mona_compat.h`
+  * Contains Monacoin-specific pure logic only.
+  * Must not depend on PICO-TNC command parsing, settings storage, UI, USB/TTY output, or platform-specific code.
+  * Must use an abstract crypto interface only.
+
+* Adapter layer:
+
+  * `mona_pico_api.c`
+  * `mona_pico_api.h`
+  * Bridges PICO-TNC data structures and command behavior to the core layer.
+  * May translate active address type, stored key format, and command-facing behavior.
+  * Must not contain direct hardware access or UI-specific printing logic.
+
+* Backend layer:
+
+  * Crypto backend files for SHA256, HMAC-SHA256, RIPEMD160, and secp256k1.
+  * This layer provides the implementation required by `mona_crypto_vtable_t`.
+  * It may depend on vendored third-party crypto code.
+  * Keep this layer separate from the Monacoin protocol logic.
+
+* Application layer:
+
+  * PICO-TNC command parser, settings structure, persistence, and user-visible output.
+  * This layer may call the adapter layer.
+  * It must not reimplement Monacoin signing/address logic internally.
+
+Dependency direction must remain:
+Application -> Adapter -> Core -> Backend
+
+Do not move code in the opposite direction.
+Do not mix command parsing, settings persistence, or UI formatting into the core layer.
+Do not add OpenSSL-dependent files to the firmware build.
+PC-side verification tools must remain outside the firmware path.
 
