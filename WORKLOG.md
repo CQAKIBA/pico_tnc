@@ -5,6 +5,35 @@ This file tracks implementation work, validation, and remaining risks.
 ## 2026-04-18
 
 ### Summary
+Added a new `about` command that prints version/edition and third-party component attribution text, and documented it in help/README outputs.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added `ABOUT` command parsing in the command table (`about` case-insensitive) and implemented multiline output text in English only.
+- Added help line entry:
+  - English help: `ABOUT (about) - Version Information`
+  - Japanese help: `ABOUT (about) - バージョン情報` (description only)
+- Added README command documentation in both English and Japanese command lists.
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, full firmware build cannot complete due missing Pico SDK configuration (`PICO_SDK_PATH` not set).
+
+### Remaining risks / TODO
+- `about` output is a relatively long multiline response; no queue constants were changed, so it relies on existing line-by-line `tty_write_str` behavior and available TX queue headroom.
+- Confirm on real device terminal clients that long attribution output remains readable under current serial pacing.
+
+## 2026-04-18
+
+### Summary
 Integrated vendored `secp256k1` into firmware build wiring and replaced minimal crypto stubs with real RIPEMD-160 + secp256k1 operations so `privkey show` can derive/print actual addresses.
 
 ### Files changed

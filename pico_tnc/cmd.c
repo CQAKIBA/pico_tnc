@@ -1141,9 +1141,51 @@ static bool cmd_disp(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+static bool cmd_about(tty_t *ttyp, uint8_t *buf, int len)
+{
+    (void)buf;
+    (void)len;
+
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "PICO-TNC      Daisuke JA1UMW / CQAKIBA.TOKYO edition\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "Extended and customized for modern DSP radios,\r\n");
+    tty_write_str(ttyp, "Japanese help, and signed QSL experiments.\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "Third-party components used or referenced by this project\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "1. PICO-TNC\r\n");
+    tty_write_str(ttyp, "   Project: amedes/pico_tnc\r\n");
+    tty_write_str(ttyp, "   License: BSD-3-Clause\r\n");
+    tty_write_str(ttyp, "   URL: https://github.com/amedes/pico_tnc\r\n");
+    tty_write_str(ttyp, "   Notes: Original firmware base used for this project.\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "2. libsecp256k1\r\n");
+    tty_write_str(ttyp, "   Project: bitcoin-core/secp256k1\r\n");
+    tty_write_str(ttyp, "   License: MIT\r\n");
+    tty_write_str(ttyp, "   URL: https://github.com/bitcoin-core/secp256k1\r\n");
+    tty_write_str(ttyp, "   Notes: Used for secp256k1 elliptic-curve operations.\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "3. Electrum Mona\r\n");
+    tty_write_str(ttyp, "   Project: wakiyamap/electrum-mona\r\n");
+    tty_write_str(ttyp, "   License: MIT\r\n");
+    tty_write_str(ttyp, "   URL: https://github.com/wakiyamap/electrum-mona\r\n");
+    tty_write_str(ttyp, "   Notes: Used as behavioral/reference material for Monacoin-compatible\r\n");
+    tty_write_str(ttyp, "          message signing and verification.\r\n");
+    tty_write_str(ttyp, "   No code copied unless explicitly noted in source comments.\r\n");
+    tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "4. libmona_pico / libmona-main\r\n");
+    tty_write_str(ttyp, "   Author: Daisuke JA1UMW / CQAKIBA.TOKYO\r\n");
+    tty_write_str(ttyp, "   License: MIT\r\n");
+    tty_write_str(ttyp, "   Notes: Monacoin-compatible message-signing support created for this project.\r\n");
+
+    return true;
+}
+
 static const cmd_t cmd_list[] = {
     { "HELP", 4, cmd_help, },
     { "?", 1, cmd_help, },
+    { "ABOUT", 5, cmd_about, },
     { "DISP", 4, cmd_disp, },
     { "MYCALL", 6, cmd_mycall, },
     { "UNPROTO", 7, cmd_unproto, },
