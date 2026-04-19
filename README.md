@@ -17,6 +17,10 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 
 - Support KISS mode
 - Support multi-port up to 3 ports
+- On-air self-contained electronic QSL system
+- Built-in MonaCoin-compatible digital signature algorithm (Elliptic Curve Cryptography 256-bit)
+
+- Support multi-port up to 3 ports
 
 ## Help command
 
