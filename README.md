@@ -33,6 +33,7 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 - `privkey show` : display persisted key material after interactive security confirmation
 - `privkey gen [m|p|mona1|p2pkh|p2sh|p2wpkh]` : generate and store Monacoin private key (32-byte raw + compressed + active type)
 - `privkey set [m|p|mona1|p2pkh|p2sh|p2wpkh|WIF|RAW]` : set active address type only (`m/p/mona1/...`) or import/store private key (`WIF/RAW`); typed WIF updates active type, untyped WIF/RAW keeps current type
+- `sign msg <text>` : sign `{"msg":"<text>"}` and append base64 signature, then prepare AX.25 UI-frame TX with Enter/ESC confirmation
 
 ## How to build
 

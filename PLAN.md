@@ -16,3 +16,6 @@
 - [x] Rework `privkey gen [type]` to interactive entropy collection (input bytes + timing) and secp256k1-range-safe key derivation.
 - [x] Add `privkey type` command set (`privkey set [m|p|mona1|p2pkh|p2sh|p2wpkh]` for active type update).
 - [ ] Add Pico crypto backend and wire sign/verify commands.
+  - [x] Add `sign msg <text>` flow: JSON payload build, message signing, TX confirm prompt, and AX.25 UI-frame enqueue.
+  - [ ] Add `sign qsl <...>` payload format and command flow.
+  - [ ] Add verify command flow.

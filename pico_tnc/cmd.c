@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "receive.h"
 #include "beacon.h"
 #include "help.h"
+#include "unproto.h"
 #include "libmona_pico/mona_pico_api.h"
 #include "mona_backend_minimal.h"
 
@@ -78,6 +79,7 @@ typedef enum {
     CMD_PENDING_IDLE = 0,
     CMD_PENDING_PRIVKEY_SHOW_CONFIRM,
     CMD_PENDING_PRIVKEY_GEN_COLLECTING,
+    CMD_PENDING_SIGN_TX_CONFIRM,
 } cmd_pending_state_t;
 
 static cmd_pending_state_t cmd_pending_state = CMD_PENDING_IDLE;
@@ -100,6 +102,14 @@ typedef struct {
 } privkey_gen_ctx_t;
 
 static privkey_gen_ctx_t privkey_gen_ctx;
+
+typedef struct {
+    tty_t *ttyp;
+    uint8_t payload[256];
+    int payload_len;
+} sign_tx_ctx_t;
+
+static sign_tx_ctx_t sign_tx_ctx;
 
 static const uint8_t SECP256K1_ORDER[32] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -1099,6 +1109,136 @@ static bool cmd_privkey(tty_t *ttyp, uint8_t *buf, int len)
     return false;
 }
 
+static int calc_unproto_ui_frame_len(int info_len)
+{
+    int pkt_len = 7 * 2;
+    int repeaters = 0;
+    int i;
+
+    for (i = 1; i < UNPROTO_N; ++i) {
+        if (param.unproto[i].call[0]) repeaters++;
+    }
+
+    pkt_len += repeaters * 7;
+    pkt_len += 2 + info_len + 2;
+    return pkt_len;
+}
+
+static bool json_escape_message(const uint8_t *in, int in_len, char *out, int out_sz)
+{
+    int i;
+    int p = 0;
+
+    if (!in || !out || out_sz <= 0) return false;
+
+    for (i = 0; i < in_len; ++i) {
+        uint8_t ch = in[i];
+
+        if (ch == '"' || ch == '\\') {
+            if (p + 2 >= out_sz) return false;
+            out[p++] = '\\';
+            out[p++] = (char)ch;
+            continue;
+        }
+
+        if (ch < 0x20) return false;
+
+        if (p + 1 >= out_sz) return false;
+        out[p++] = (char)ch;
+    }
+
+    out[p] = '\0';
+    return true;
+}
+
+static bool cmd_sign(tty_t *ttyp, uint8_t *buf, int len)
+{
+    mona_keyslot_t slot;
+    mona_err_t err;
+    uint64_t t0_us;
+    uint64_t t1_us;
+    char escaped_msg[CMD_BUF_LEN * 2 + 1];
+    char json_msg[CMD_BUF_LEN * 2 + 32];
+    char sig_b64[MONA_SIG_B64_MAX];
+    int payload_len;
+    char s[80];
+    int frame_len;
+    uint8_t *p;
+
+    if (!buf || !buf[0]) {
+        tty_write_str(ttyp, "SIGN msg <text>\r\n");
+        return true;
+    }
+
+    p = skip_spaces(buf);
+    if (strncasecmp((char *)p, "MSG", 3) || p[3] != ' ') return false;
+    p = skip_spaces(p + 3);
+    if (!*p) return false;
+
+    if (!param.mona_privkey_valid) {
+        tty_write_str(ttyp, "No private key. Run \"privkey gen\" or \"privkey set\" first.\r\n");
+        return true;
+    }
+    if (!param.mycall.call[0] || !param.unproto[0].call[0]) {
+        tty_write_str(ttyp, "Please set MYCALL and UNPROTO before SIGN.\r\n");
+        return true;
+    }
+
+    mona_backend_minimal_init();
+
+    memset(&slot, 0, sizeof(slot));
+    memcpy(slot.secret, param.mona_privkey, sizeof(slot.secret));
+    slot.valid = param.mona_privkey_valid ? true : false;
+    slot.compressed = param.mona_privkey_compressed ? true : false;
+    slot.active_type = mona_param_to_addr_type(param.mona_active_type);
+
+    if (!json_escape_message(p, (int)strlen((char *)p), escaped_msg, sizeof(escaped_msg))) {
+        tty_write_str(ttyp, "Message contains unsupported control characters or is too long.\r\n");
+        return true;
+    }
+
+    snprintf(json_msg, sizeof(json_msg), "{\"msg\":\"%s\"}", escaped_msg);
+
+    tty_write_str(ttyp, "Digital signature calculation in progress... ");
+    t0_us = time_us_64();
+    err = mona_keyslot_sign_message(&slot, json_msg, sig_b64, sizeof(sig_b64), NULL, 0);
+    t1_us = time_us_64();
+    if (err != MONA_OK) {
+        tty_write_str(ttyp, "Failed.\r\n");
+        return true;
+    }
+    tty_write(ttyp, (uint8_t *)"Completed. (", 12);
+    snprintf(s, sizeof(s), "%lluus", (unsigned long long)(t1_us - t0_us));
+    tty_write_str(ttyp, s);
+    tty_write_str(ttyp, ")\r\n");
+
+    payload_len = snprintf((char *)sign_tx_ctx.payload, sizeof(sign_tx_ctx.payload), "%s%s", json_msg, sig_b64);
+    if (payload_len <= 0 || payload_len >= (int)sizeof(sign_tx_ctx.payload)) {
+        tty_write_str(ttyp, "Signed payload is too long.\r\n");
+        return true;
+    }
+    sign_tx_ctx.payload_len = payload_len;
+    sign_tx_ctx.ttyp = ttyp;
+
+    tty_write(ttyp, sign_tx_ctx.payload, sign_tx_ctx.payload_len);
+    tty_write_str(ttyp, "\r\n");
+
+    frame_len = calc_unproto_ui_frame_len(sign_tx_ctx.payload_len);
+    if (frame_len < 256) {
+        snprintf(s, sizeof(s), "%dbyte < 256byte OK.\r\n", frame_len);
+        tty_write_str(ttyp, s);
+    } else {
+        snprintf(s, sizeof(s), "%dbyte >= 256byte NG.\r\n", frame_len);
+        tty_write_str(ttyp, s);
+        return true;
+    }
+
+    tty_write_str(ttyp, "Ready to send. Press [Enter] to TX or [ESC] to abort.\r\n");
+    cmd_pending_state = CMD_PENDING_SIGN_TX_CONFIRM;
+    cmd_pending_ttyp = ttyp;
+    return true;
+}
+
 static void disp_section(tty_t *ttyp, uint8_t const *title)
 {
     tty_write_str(ttyp, "\r\n");
@@ -1205,6 +1345,7 @@ static const cmd_t cmd_list[] = {
     { "K", 1, cmd_converse, },
     { "KISS", 4, cmd_kiss, },
     { "PRIVKEY", 7, cmd_privkey, },
+    { "SIGN", 4, cmd_sign, },
 
     // end mark
     { NULL, 0, NULL, },
@@ -1271,6 +1412,26 @@ bool cmd_consume_pending_input(tty_t *ttyp, int ch)
 
     if (cmd_pending_state == CMD_PENDING_PRIVKEY_GEN_COLLECTING) {
         return privkey_gen_consume_char(ttyp, ch);
+    }
+
+    if (cmd_pending_state == CMD_PENDING_SIGN_TX_CONFIRM) {
+        if (ch == '\n') return true;
+        if (ch == '\x1b') {
+            cmd_pending_state = CMD_PENDING_IDLE;
+            cmd_pending_ttyp = NULL;
+            memset(&sign_tx_ctx, 0, sizeof(sign_tx_ctx));
+            tty_write_str(ttyp, "Aborted by user.\r\n");
+            tty_write_str(ttyp, "cmd: ");
+            return true;
+        }
+        if (ch != '\r') return true;
+
+        send_unproto(&tnc[CONVERSE_PORT], sign_tx_ctx.payload, sign_tx_ctx.payload_len);
+        cmd_pending_state = CMD_PENDING_IDLE;
+        cmd_pending_ttyp = NULL;
+        memset(&sign_tx_ctx, 0, sizeof(sign_tx_ctx));
+        tty_write_str(ttyp, "cmd: ");
+        return true;
     }
 
     return false;

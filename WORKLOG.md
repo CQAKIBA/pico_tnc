@@ -2,6 +2,45 @@
 
 This file tracks implementation work, validation, and remaining risks.
 
+## 2026-04-20
+
+### Summary
+Implemented initial `sign` command support for plain text signing as `sign msg <text>` with interactive TX confirmation.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `PLAN.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added `SIGN` command parser entry with `sign msg <text>` subcommand.
+- `sign msg` now:
+  - validates key slot + `MYCALL`/`UNPROTO` presence.
+  - builds JSON payload as `{"msg":"<text>"}` (with basic JSON escaping for `"` and `\`).
+  - signs the JSON string via `mona_keyslot_sign_message()`.
+  - concatenates JSON + signature and prints the packet text.
+  - measures and prints signing time in microseconds.
+  - computes AX.25 UI frame length and prints `< 256byte OK` / `>= 256byte NG`.
+  - waits for `[Enter]` to TX or `[ESC]` to abort.
+- Added pending-input state for sign TX confirmation:
+  - Enter sends one UI frame using current `MYCALL`/`UNPROTO`.
+  - ESC aborts with `Aborted by user.`.
+- Updated HELP/README (EN/JP) command documentation to include `sign msg`.
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, full firmware build cannot complete due missing Pico SDK configuration (`PICO_SDK_PATH` not set).
+
+### Remaining risks / TODO
+- Sign payload buffer is capped at 255 bytes (`CMD_BUF_LEN` interaction + signature length); longer messages are rejected before TX prompt.
+- Added text output lines for signing status and packet preview increase transient USB/TTY queue usage; queue constants were not changed, so behavior depends on existing `tty_write` pacing and queue headroom.
+- `sign qsl ...` and verify command paths are still pending by plan.
+
 ## 2026-04-18
 
 ### Summary
