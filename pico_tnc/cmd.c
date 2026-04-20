@@ -46,6 +46,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "libmona_pico/mona_pico_api.h"
 #include "mona_backend_minimal.h"
 
+#define CONVERSE_PORT 0
+
 typedef struct CMD {
     uint8_t *name;
     int len;
