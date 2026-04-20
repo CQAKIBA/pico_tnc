@@ -677,3 +677,25 @@ Clarify pending-input state naming so it is not tied to `privkey show` only.
 
 ### Remaining risks / TODOs
 - None newly introduced by this rename-only cleanup.
+
+## 2026-04-20
+
+### Summary
+Fixed build break in `cmd_consume_pending_input()` by restoring the missing converse port constant used by sign TX confirmation.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- No functional behavior change intended.
+- `sign` TX confirmation path now compiles again because `CONVERSE_PORT` is defined in `cmd.c`.
+
+### Validation status
+- Build attempted with:
+  - `cmake --build build -j4` (failed: `build` directory did not exist)
+  - `cmake -S . -B build` (failed: `PICO_SDK_PATH` not set in this environment)
+- Full firmware build could not be completed in this environment.
+
+### Remaining risks / TODO
+- `CONVERSE_PORT` is now defined in both `tty.c` and `cmd.c`; consider centralizing this constant in a shared header in a later cleanup change.
