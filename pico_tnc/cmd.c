@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include "pico/stdlib.h"
 #include "class/cdc/cdc_device.h"
@@ -81,6 +82,7 @@ typedef enum {
     CMD_PENDING_IDLE = 0,
     CMD_PENDING_PRIVKEY_SHOW_CONFIRM,
     CMD_PENDING_PRIVKEY_GEN_COLLECTING,
+    CMD_PENDING_SIGN_QSL_WIZARD,
     CMD_PENDING_SIGN_TX_CONFIRM,
 } cmd_pending_state_t;
 
@@ -112,6 +114,38 @@ typedef struct {
 } sign_tx_ctx_t;
 
 static sign_tx_ctx_t sign_tx_ctx;
+
+typedef struct {
+    char qsl[24];
+    char rs[16];
+    char date[16];
+    char time[16];
+    char freq[24];
+    char mode[16];
+    char qth[64];
+} qsl_data_t;
+
+typedef struct {
+    bool is_set;
+    int year;
+    int month;
+    int day;
+    int hour;
+    int min;
+    int sec;
+    uint64_t anchor_us;
+} soft_clock_t;
+
+typedef struct {
+    tty_t *ttyp;
+    int step;
+    int input_len;
+    char input[80];
+    qsl_data_t data;
+} sign_qsl_wizard_ctx_t;
+
+static soft_clock_t soft_clock;
+static sign_qsl_wizard_ctx_t sign_qsl_wizard_ctx;
 
 static const uint8_t SECP256K1_ORDER[32] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -156,8 +190,15 @@ static bool privkey_gen_mix(uint8_t state32[32], uint8_t const *payload, size_t 
 
 static void privkey_gen_print_remaining_inline(tty_t *ttyp, int remaining)
 {
-    char s[64];
-    int n = snprintf(s, sizeof(s), "\rRemaining entropy counter: %3d   ", remaining);
+    char s[48];
+    int n = snprintf(s, sizeof(s), "Remaining entropy counter:%5d", remaining);
+    if (n > 0) tty_write(ttyp, (uint8_t *)s, n);
+}
+
+static void privkey_gen_update_remaining_inline(tty_t *ttyp, int remaining)
+{
+    char s[16];
+    int n = snprintf(s, sizeof(s), "\b\b\b\b\b%5d", remaining);
     if (n > 0) tty_write(ttyp, (uint8_t *)s, n);
 }
 
@@ -242,7 +283,7 @@ static bool privkey_gen_start(tty_t *ttyp, mona_addr_type_t type)
     privkey_gen_reset();
     privkey_gen_ctx.ttyp = ttyp;
     privkey_gen_ctx.active_type = type;
-    privkey_gen_ctx.remaining = 640;
+    privkey_gen_ctx.remaining = 1000;
 
     memset(init_buf, 0, sizeof(init_buf));
     memcpy(init_buf + 0, &now_us, sizeof(now_us));
@@ -309,7 +350,7 @@ static bool privkey_gen_consume_char(tty_t *ttyp, int ch)
     if (!privkey_gen_mix(privkey_gen_ctx.state, ev, sizeof(ev))) return false;
 
     privkey_gen_ctx.event_index++;
-    privkey_gen_print_remaining_inline(ttyp, privkey_gen_ctx.remaining);
+    privkey_gen_update_remaining_inline(ttyp, privkey_gen_ctx.remaining);
 
     if (privkey_gen_ctx.remaining == 0) {
         ok = privkey_gen_prepare_secret();
@@ -1153,29 +1194,16 @@ static bool json_escape_message(const uint8_t *in, int in_len, char *out, int ou
     return true;
 }
 
-static bool cmd_sign(tty_t *ttyp, uint8_t *buf, int len)
+static bool sign_prepare_and_prompt_tx(tty_t *ttyp, const char *json_msg)
 {
     mona_keyslot_t slot;
     mona_err_t err;
     uint64_t t0_us;
     uint64_t t1_us;
-    char escaped_msg[CMD_BUF_LEN * 2 + 1];
-    char json_msg[CMD_BUF_LEN * 2 + 32];
     char sig_b64[MONA_SIG_B64_MAX];
     int payload_len;
     char s[80];
     int frame_len;
-    uint8_t *p;
-
-    if (!buf || !buf[0]) {
-        tty_write_str(ttyp, "SIGN msg <text>\r\n");
-        return true;
-    }
-
-    p = skip_spaces(buf);
-    if (strncasecmp((char *)p, "MSG", 3) || p[3] != ' ') return false;
-    p = skip_spaces(p + 3);
-    if (!*p) return false;
 
     if (!param.mona_privkey_valid) {
         tty_write_str(ttyp, "No private key. Run \"privkey gen\" or \"privkey set\" first.\r\n");
@@ -1193,13 +1221,6 @@ static bool cmd_sign(tty_t *ttyp, uint8_t *buf, int len)
     slot.valid = param.mona_privkey_valid ? true : false;
     slot.compressed = param.mona_privkey_compressed ? true : false;
     slot.active_type = mona_param_to_addr_type(param.mona_active_type);
-
-    if (!json_escape_message(p, (int)strlen((char *)p), escaped_msg, sizeof(escaped_msg))) {
-        tty_write_str(ttyp, "Message contains unsupported control characters or is too long.\r\n");
-        return true;
-    }
-
-    snprintf(json_msg, sizeof(json_msg), "{\"msg\":\"%s\"}", escaped_msg);
 
     tty_write_str(ttyp, "Digital signature calculation in progress... ");
     t0_us = time_us_64();
@@ -1239,6 +1260,532 @@ static bool cmd_sign(tty_t *ttyp, uint8_t *buf, int len)
     cmd_pending_state = CMD_PENDING_SIGN_TX_CONFIRM;
     cmd_pending_ttyp = ttyp;
     return true;
+}
+
+static bool soft_clock_is_leap(int year)
+{
+    if ((year % 400) == 0) return true;
+    if ((year % 100) == 0) return false;
+    return (year % 4) == 0;
+}
+
+static int soft_clock_days_in_month(int year, int month)
+{
+    static const int days[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    if (month == 2) return soft_clock_is_leap(year) ? 29 : 28;
+    if (month < 1 || month > 12) return 31;
+    return days[month - 1];
+}
+
+static bool parse_yyyymmdd(const char *s, int *year, int *month, int *day)
+{
+    int y, m, d;
+    if (!s || strlen(s) != 8) return false;
+    if (sscanf(s, "%4d%2d%2d", &y, &m, &d) != 3) return false;
+    if (m < 1 || m > 12) return false;
+    if (d < 1 || d > soft_clock_days_in_month(y, m)) return false;
+    *year = y;
+    *month = m;
+    *day = d;
+    return true;
+}
+
+static bool parse_hhmmtz(const char *s, int *hour, int *min)
+{
+    int hh, mm;
+    if (!s || strlen(s) < 4) return false;
+    if (!isdigit((unsigned char)s[0]) || !isdigit((unsigned char)s[1]) ||
+        !isdigit((unsigned char)s[2]) || !isdigit((unsigned char)s[3])) {
+        return false;
+    }
+    hh = (s[0] - '0') * 10 + (s[1] - '0');
+    mm = (s[2] - '0') * 10 + (s[3] - '0');
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return false;
+    *hour = hh;
+    *min = mm;
+    return true;
+}
+
+static void soft_clock_add_elapsed(soft_clock_t *c, uint64_t elapsed_sec)
+{
+    uint64_t total_min;
+    uint64_t total_hour;
+    uint64_t day_add;
+    int dim;
+
+    if (!c->is_set || elapsed_sec == 0) return;
+
+    c->sec += (int)(elapsed_sec % 60);
+    elapsed_sec /= 60;
+    if (c->sec >= 60) {
+        c->sec -= 60;
+        elapsed_sec++;
+    }
+
+    total_min = (uint64_t)c->min + (elapsed_sec % 60);
+    elapsed_sec /= 60;
+    c->min = (int)(total_min % 60);
+    elapsed_sec += total_min / 60;
+
+    total_hour = (uint64_t)c->hour + (elapsed_sec % 24);
+    day_add = elapsed_sec / 24;
+    c->hour = (int)(total_hour % 24);
+    day_add += total_hour / 24;
+
+    while (day_add > 0) {
+        dim = soft_clock_days_in_month(c->year, c->month);
+        if (c->day < dim) {
+            c->day++;
+        } else {
+            c->day = 1;
+            c->month++;
+            if (c->month > 12) {
+                c->month = 1;
+                c->year++;
+            }
+        }
+        day_add--;
+    }
+}
+
+static bool soft_clock_get_preset(char out_date[16], char out_time[16])
+{
+    soft_clock_t snap = soft_clock;
+    uint64_t now_us;
+    uint64_t elapsed_sec;
+
+    if (!snap.is_set) return false;
+
+    now_us = time_us_64();
+    elapsed_sec = (now_us - snap.anchor_us) / 1000000ULL;
+    soft_clock_add_elapsed(&snap, elapsed_sec);
+
+    snprintf(out_date, 16, "%04d%02d%02d", snap.year, snap.month, snap.day);
+    snprintf(out_time, 16, "%02d%02dJST", snap.hour, snap.min);
+    return true;
+}
+
+static bool qsl_validate_and_normalize_date(const char *in, char out[16])
+{
+    int i;
+    int p = 0;
+    int year, month, day;
+
+    if (!in || !in[0]) return false;
+
+    for (i = 0; in[i] && p < 8; ++i) {
+        if (isdigit((unsigned char)in[i])) {
+            out[p++] = in[i];
+            continue;
+        }
+        if (in[i] == '/' || in[i] == '-' || in[i] == ' ') continue;
+        return false;
+    }
+    if (in[i] != '\0') return false;
+    if (p != 8) return false;
+    out[8] = '\0';
+    if (!parse_yyyymmdd(out, &year, &month, &day)) return false;
+    return true;
+}
+
+static bool qsl_validate_and_normalize_time(const char *in, char out[16])
+{
+    char digits[8];
+    char tz[8];
+    int d = 0;
+    int t = 0;
+    int i;
+    int hour;
+    int min;
+    bool tz_started = false;
+
+    if (!in || !in[0]) return false;
+
+    for (i = 0; in[i]; ++i) {
+        char ch = in[i];
+        if (!tz_started && isdigit((unsigned char)ch)) {
+            if (d >= 4) return false;
+            digits[d++] = ch;
+            continue;
+        }
+        if (!tz_started && (ch == ':' || ch == ' ')) continue;
+        if (isalpha((unsigned char)ch)) {
+            tz_started = true;
+            if (t >= (int)sizeof(tz) - 1) return false;
+            tz[t++] = (char)toupper((unsigned char)ch);
+            continue;
+        }
+        if (ch == ' ' && tz_started) continue;
+        return false;
+    }
+
+    if (d != 4) return false;
+    digits[4] = '\0';
+    if (t == 0) {
+        strcpy(tz, "JST");
+    } else {
+        tz[t] = '\0';
+    }
+
+    if (!parse_hhmmtz(digits, &hour, &min)) return false;
+    snprintf(out, 16, "%s%s", digits, tz);
+    return true;
+}
+
+static void qsl_upper_copy(char *out, size_t out_sz, const char *in)
+{
+    size_t i;
+    for (i = 0; i + 1 < out_sz && in && in[i]; ++i) {
+        out[i] = (char)toupper((unsigned char)in[i]);
+    }
+    out[i] = '\0';
+}
+
+static bool qsl_build_json(const qsl_data_t *data, char *json_out, size_t json_out_sz)
+{
+    char qsl[64], rs[32], date[32], time[32], freq[64], mode[32], qth[128];
+
+    if (!json_escape_message((const uint8_t *)data->qsl, (int)strlen(data->qsl), qsl, sizeof(qsl))) return false;
+    if (!json_escape_message((const uint8_t *)data->rs, (int)strlen(data->rs), rs, sizeof(rs))) return false;
+    if (!json_escape_message((const uint8_t *)data->date, (int)strlen(data->date), date, sizeof(date))) return false;
+    if (!json_escape_message((const uint8_t *)data->time, (int)strlen(data->time), time, sizeof(time))) return false;
+    if (!json_escape_message((const uint8_t *)data->freq, (int)strlen(data->freq), freq, sizeof(freq))) return false;
+    if (!json_escape_message((const uint8_t *)data->mode, (int)strlen(data->mode), mode, sizeof(mode))) return false;
+    if (!json_escape_message((const uint8_t *)data->qth, (int)strlen(data->qth), qth, sizeof(qth))) return false;
+
+    if (snprintf(json_out, json_out_sz,
+                 "{\"QSL\":\"%s\",\"S\":\"%s\",\"D\":\"%s\",\"T\":\"%s\",\"F\":\"%s\",\"M\":\"%s\",\"P\":\"%s\"}",
+                 qsl, rs, date, time, freq, mode, qth) >= (int)json_out_sz) {
+        return false;
+    }
+    return true;
+}
+
+static bool qsl_try_update_soft_clock(const qsl_data_t *data)
+{
+    int year, month, day;
+    int hour, min;
+
+    if (!parse_yyyymmdd(data->date, &year, &month, &day)) return false;
+    if (!parse_hhmmtz(data->time, &hour, &min)) return false;
+
+    soft_clock.is_set = true;
+    soft_clock.year = year;
+    soft_clock.month = month;
+    soft_clock.day = day;
+    soft_clock.hour = hour;
+    soft_clock.min = min;
+    soft_clock.sec = 0;
+    soft_clock.anchor_us = time_us_64();
+    return true;
+}
+
+static bool qsl_finalize_and_sign(tty_t *ttyp, qsl_data_t *data)
+{
+    char norm_date[16];
+    char norm_time[16];
+    char json_msg[256];
+
+    if (!data->qsl[0] || !data->rs[0] || !data->date[0] || !data->time[0]) {
+        tty_write_str(ttyp, "QSL requires TO/RS/DATE/TIME.\r\n");
+        return true;
+    }
+    if (!qsl_validate_and_normalize_date(data->date, norm_date)) {
+        tty_write_str(ttyp, "Invalid DATE. Use YYYYMMDD or YYYY/MM/DD.\r\n");
+        return true;
+    }
+    if (!qsl_validate_and_normalize_time(data->time, norm_time)) {
+        tty_write_str(ttyp, "Invalid TIME. Use HHMM, HH:MM, or HHMMTZ.\r\n");
+        return true;
+    }
+
+    strncpy(data->date, norm_date, sizeof(data->date));
+    data->date[sizeof(data->date) - 1] = '\0';
+    strncpy(data->time, norm_time, sizeof(data->time));
+    data->time[sizeof(data->time) - 1] = '\0';
+
+    if (!qsl_build_json(data, json_msg, sizeof(json_msg))) {
+        tty_write_str(ttyp, "QSL payload contains unsupported characters or is too long.\r\n");
+        return true;
+    }
+
+    qsl_try_update_soft_clock(data);
+    return sign_prepare_and_prompt_tx(ttyp, json_msg);
+}
+
+static bool qsl_parse_args(char *args, qsl_data_t *out)
+{
+    char *tok[32];
+    int tok_n = 0;
+    int i = 0;
+
+    memset(out, 0, sizeof(*out));
+    tok[tok_n] = strtok(args, " ");
+    while (tok[tok_n] && tok_n + 1 < (int)(sizeof(tok) / sizeof(tok[0]))) {
+        tok_n++;
+        tok[tok_n] = strtok(NULL, " ");
+    }
+    if (tok_n == 0) return false;
+
+    qsl_upper_copy(out->qsl, sizeof(out->qsl), tok[0]);
+    i = 1;
+    while (i < tok_n) {
+        if (!strcasecmp(tok[i], "-rs")) {
+            if (i + 1 >= tok_n) return false;
+            strncpy(out->rs, tok[i + 1], sizeof(out->rs) - 1);
+            i += 2;
+            continue;
+        }
+        if (!strcasecmp(tok[i], "-date")) {
+            char buf[32] = {0};
+            int k = 0;
+            int j = i + 1;
+            if (j >= tok_n) return false;
+            while (j < tok_n && tok[j][0] != '-' && k < 3) {
+                if (k > 0) strncat(buf, " ", sizeof(buf) - strlen(buf) - 1);
+                strncat(buf, tok[j], sizeof(buf) - strlen(buf) - 1);
+                j++;
+                k++;
+            }
+            if (k == 0) return false;
+            strncpy(out->date, buf, sizeof(out->date) - 1);
+            i = j;
+            continue;
+        }
+        if (!strcasecmp(tok[i], "-time")) {
+            char buf[32] = {0};
+            int k = 0;
+            int j = i + 1;
+            if (j >= tok_n) return false;
+            while (j < tok_n && tok[j][0] != '-' && k < 2) {
+                if (k > 0) strncat(buf, " ", sizeof(buf) - strlen(buf) - 1);
+                strncat(buf, tok[j], sizeof(buf) - strlen(buf) - 1);
+                j++;
+                k++;
+            }
+            if (k == 0) return false;
+            strncpy(out->time, buf, sizeof(out->time) - 1);
+            i = j;
+            continue;
+        }
+        if (!strcasecmp(tok[i], "-freq")) {
+            if (i + 1 >= tok_n) return false;
+            strncpy(out->freq, tok[i + 1], sizeof(out->freq) - 1);
+            i += 2;
+            continue;
+        }
+        if (!strcasecmp(tok[i], "-mode")) {
+            if (i + 1 >= tok_n) return false;
+            qsl_upper_copy(out->mode, sizeof(out->mode), tok[i + 1]);
+            i += 2;
+            continue;
+        }
+        if (!strcasecmp(tok[i], "-qth")) {
+            int j = i + 1;
+            if (j >= tok_n) return false;
+            out->qth[0] = '\0';
+            while (j < tok_n) {
+                if ((strlen(out->qth) + strlen(tok[j]) + 2) >= sizeof(out->qth)) return false;
+                if (out->qth[0]) strncat(out->qth, " ", sizeof(out->qth) - strlen(out->qth) - 1);
+                strncat(out->qth, tok[j], sizeof(out->qth) - strlen(out->qth) - 1);
+                j++;
+            }
+            i = j;
+            continue;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+static void sign_qsl_wizard_prompt(tty_t *ttyp)
+{
+    char date[16];
+    char time[16];
+
+    switch (sign_qsl_wizard_ctx.step) {
+        case 0: tty_write_str(ttyp, "TO  : "); break;
+        case 1: tty_write_str(ttyp, "RS  : "); break;
+        case 2:
+            if (soft_clock_get_preset(date, time)) {
+                tty_write_str(ttyp, "DATE[");
+                tty_write_str(ttyp, date);
+                tty_write_str(ttyp, "]: ");
+            } else {
+                tty_write_str(ttyp, "DATE: ");
+            }
+            break;
+        case 3:
+            if (soft_clock_get_preset(date, time)) {
+                tty_write_str(ttyp, "TIME[");
+                tty_write_str(ttyp, time);
+                tty_write_str(ttyp, "]: ");
+            } else {
+                tty_write_str(ttyp, "TIME: ");
+            }
+            break;
+        case 4: tty_write_str(ttyp, "FREQ: "); break;
+        case 5: tty_write_str(ttyp, "MODE: "); break;
+        case 6: tty_write_str(ttyp, "QTH : "); break;
+        default: break;
+    }
+}
+
+static bool sign_qsl_wizard_start(tty_t *ttyp)
+{
+    memset(&sign_qsl_wizard_ctx, 0, sizeof(sign_qsl_wizard_ctx));
+    sign_qsl_wizard_ctx.ttyp = ttyp;
+
+    tty_write_str(ttyp, "Please input the data.\r\n");
+    tty_write_str(ttyp, "Required\r\n");
+    tty_write_str(ttyp, "TO  :\r\n");
+    tty_write_str(ttyp, "RS  :\r\n");
+    tty_write_str(ttyp, "DATE:\r\n");
+    tty_write_str(ttyp, "TIME:\r\n");
+    tty_write_str(ttyp, "Optional\r\n");
+    tty_write_str(ttyp, "FREQ:\r\n");
+    tty_write_str(ttyp, "MODE:\r\n");
+    tty_write_str(ttyp, "QTH :\r\n");
+    sign_qsl_wizard_prompt(ttyp);
+    cmd_pending_state = CMD_PENDING_SIGN_QSL_WIZARD;
+    cmd_pending_ttyp = ttyp;
+    return true;
+}
+
+static bool sign_qsl_wizard_store_input(void)
+{
+    char date[16];
+    char time[16];
+    char *in = sign_qsl_wizard_ctx.input;
+
+    if (sign_qsl_wizard_ctx.step == 2 && in[0] == '\0' && soft_clock_get_preset(date, time)) {
+        in = date;
+    }
+    if (sign_qsl_wizard_ctx.step == 3 && in[0] == '\0' && soft_clock_get_preset(date, time)) {
+        in = time;
+    }
+
+    switch (sign_qsl_wizard_ctx.step) {
+        case 0: qsl_upper_copy(sign_qsl_wizard_ctx.data.qsl, sizeof(sign_qsl_wizard_ctx.data.qsl), in); break;
+        case 1: strncpy(sign_qsl_wizard_ctx.data.rs, in, sizeof(sign_qsl_wizard_ctx.data.rs) - 1); break;
+        case 2: strncpy(sign_qsl_wizard_ctx.data.date, in, sizeof(sign_qsl_wizard_ctx.data.date) - 1); break;
+        case 3: strncpy(sign_qsl_wizard_ctx.data.time, in, sizeof(sign_qsl_wizard_ctx.data.time) - 1); break;
+        case 4: strncpy(sign_qsl_wizard_ctx.data.freq, in, sizeof(sign_qsl_wizard_ctx.data.freq) - 1); break;
+        case 5: qsl_upper_copy(sign_qsl_wizard_ctx.data.mode, sizeof(sign_qsl_wizard_ctx.data.mode), in); break;
+        case 6: strncpy(sign_qsl_wizard_ctx.data.qth, in, sizeof(sign_qsl_wizard_ctx.data.qth) - 1); break;
+        default: return false;
+    }
+    return true;
+}
+
+static bool sign_qsl_wizard_consume_char(tty_t *ttyp, int ch)
+{
+    char date[16];
+    char time[16];
+
+    if (ttyp != sign_qsl_wizard_ctx.ttyp) return false;
+    if (ch == '\x1b') {
+        cmd_pending_state = CMD_PENDING_IDLE;
+        cmd_pending_ttyp = NULL;
+        memset(&sign_qsl_wizard_ctx, 0, sizeof(sign_qsl_wizard_ctx));
+        tty_write_str(ttyp, "\r\nAborted by user.\r\n");
+        tty_write_str(ttyp, "cmd: ");
+        return true;
+    }
+    if (ch == '\n') return true;
+    if (ch == '\b' || ch == 0x7f) {
+        if (sign_qsl_wizard_ctx.input_len > 0) {
+            sign_qsl_wizard_ctx.input_len--;
+            sign_qsl_wizard_ctx.input[sign_qsl_wizard_ctx.input_len] = '\0';
+            if (param.echo) tty_write_str(ttyp, "\b \b");
+        } else if (param.echo) {
+            tty_write_char(ttyp, '\a');
+        }
+        return true;
+    }
+    if (ch != '\r') {
+        if ((ch >= ' ' && ch <= '~') && sign_qsl_wizard_ctx.input_len + 1 < (int)sizeof(sign_qsl_wizard_ctx.input)) {
+            sign_qsl_wizard_ctx.input[sign_qsl_wizard_ctx.input_len++] = (char)ch;
+            sign_qsl_wizard_ctx.input[sign_qsl_wizard_ctx.input_len] = '\0';
+            if (param.echo) tty_write_char(ttyp, (uint8_t)ch);
+        } else if (param.echo) {
+            tty_write_char(ttyp, '\a');
+        }
+        return true;
+    }
+
+    if (param.echo) tty_write_str(ttyp, "\r\n");
+    if (sign_qsl_wizard_ctx.input[0] == '\0' &&
+        sign_qsl_wizard_ctx.step >= 0 && sign_qsl_wizard_ctx.step <= 3) {
+        bool has_preset = false;
+        if (sign_qsl_wizard_ctx.step == 2 || sign_qsl_wizard_ctx.step == 3) {
+            has_preset = soft_clock_get_preset(date, time);
+        }
+        if (!has_preset) {
+            tty_write_str(ttyp, "Required.\r\n");
+            sign_qsl_wizard_prompt(ttyp);
+            return true;
+        }
+    }
+
+    if (!sign_qsl_wizard_store_input()) return false;
+    sign_qsl_wizard_ctx.input_len = 0;
+    sign_qsl_wizard_ctx.input[0] = '\0';
+    sign_qsl_wizard_ctx.step++;
+
+    if (sign_qsl_wizard_ctx.step > 6) {
+        qsl_data_t data = sign_qsl_wizard_ctx.data;
+        cmd_pending_state = CMD_PENDING_IDLE;
+        cmd_pending_ttyp = NULL;
+        memset(&sign_qsl_wizard_ctx, 0, sizeof(sign_qsl_wizard_ctx));
+        return qsl_finalize_and_sign(ttyp, &data);
+    }
+
+    sign_qsl_wizard_prompt(ttyp);
+    return true;
+}
+
+static bool cmd_sign(tty_t *ttyp, uint8_t *buf, int len)
+{
+    qsl_data_t qsl_data;
+    char escaped_msg[CMD_BUF_LEN * 2 + 1];
+    char json_msg[256];
+    char arg_copy[CMD_BUF_LEN + 1];
+    uint8_t *p;
+    (void)len;
+
+    if (!buf || !buf[0]) {
+        tty_write_str(ttyp, "SIGN msg <text>\r\n");
+        tty_write_str(ttyp, "SIGN qsl [to] -rs <report> -date <YYYY MM DD|YYYY-MM-DD|YYYYMMDD> -time <HH:MM|HHMM|HHMMTZ> [-freq <f>] [-mode <m>] [-qth <text>]\r\n");
+        return true;
+    }
+
+    p = skip_spaces(buf);
+
+    if (!strncasecmp((char *)p, "MSG", 3) && p[3] == ' ') {
+        p = skip_spaces(p + 3);
+        if (!*p) return false;
+
+        if (!json_escape_message(p, (int)strlen((char *)p), escaped_msg, sizeof(escaped_msg))) {
+            tty_write_str(ttyp, "Message contains unsupported control characters or is too long.\r\n");
+            return true;
+        }
+        snprintf(json_msg, sizeof(json_msg), "{\"msg\":\"%s\"}", escaped_msg);
+        return sign_prepare_and_prompt_tx(ttyp, json_msg);
+    }
+
+    if (!strncasecmp((char *)p, "QSL", 3) && (p[3] == '\0' || p[3] == ' ')) {
+        p = skip_spaces(p + 3);
+        if (!*p) return sign_qsl_wizard_start(ttyp);
+
+        strncpy(arg_copy, (char *)p, sizeof(arg_copy) - 1);
+        arg_copy[sizeof(arg_copy) - 1] = '\0';
+        if (!qsl_parse_args(arg_copy, &qsl_data)) return false;
+        return qsl_finalize_and_sign(ttyp, &qsl_data);
+    }
+
+    return false;
 }
 
 static void disp_section(tty_t *ttyp, uint8_t const *title)
@@ -1414,6 +1961,10 @@ bool cmd_consume_pending_input(tty_t *ttyp, int ch)
 
     if (cmd_pending_state == CMD_PENDING_PRIVKEY_GEN_COLLECTING) {
         return privkey_gen_consume_char(ttyp, ch);
+    }
+
+    if (cmd_pending_state == CMD_PENDING_SIGN_QSL_WIZARD) {
+        return sign_qsl_wizard_consume_char(ttyp, ch);
     }
 
     if (cmd_pending_state == CMD_PENDING_SIGN_TX_CONFIRM) {
