@@ -2,6 +2,70 @@
 
 This file tracks implementation work, validation, and remaining risks.
 
+## 2026-04-21
+
+### Summary
+Implemented `sign qsl` command with argument mode and interactive wizard mode, then routed finalized payloads through the existing sign/TX confirmation flow.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `PLAN.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added `sign qsl` command flow:
+  - argument mode: `sign qsl <to> -rs ... -date ... -time ... [-freq ...] [-mode ...] [-qth ...]`
+  - wizard mode: `sign qsl` (no args), prompting `TO/RS/DATE/TIME/FREQ/MODE/QTH`.
+- Added QSL field normalization helpers:
+  - `QSL` and `MODE` uppercased.
+  - `DATE` normalized to `YYYYMMDD` from `YYYYMMDD` or separated forms (`/`, `-`, space).
+  - `TIME` normalized to `HHMMTZ`; when timezone is omitted, `JST` is appended.
+- Added QSL JSON payload builder with fixed key layout:
+  - `{"QSL":"...","S":"...","D":"...","T":"...","F":"...","M":"...","P":"..."}`
+- Refactored sign send path into shared helper so `sign msg` and `sign qsl` both use the same signing, byte-size check, and Enter/ESC TX confirmation behavior.
+- Added lightweight software clock state in command layer:
+  - progresses from `time_us_64()` anchor while firmware is running.
+  - wizard DATE/TIME prompt shows presets when clock is set.
+  - on successful `sign qsl` finalize, input `DATE/TIME` updates the software clock.
+- Help/README (EN/JP) updated to document `sign qsl`.
+- Added one pending-input state for QSL wizard interaction; queue sizes and buffer constants were unchanged.
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, full firmware build cannot complete due missing Pico SDK configuration (`PICO_SDK_PATH` not set).
+
+### Remaining risks / TODO
+- Wizard input currently supports ASCII printable range with terminal echo semantics matching existing command input; multibyte input and locale-specific entry are not handled.
+- `-qth` argument consumes the remaining tail of the command line for simplicity; adding option-reordering/quoting rules can be done in a follow-up parser enhancement.
+
+## 2026-04-21
+
+### Summary
+Adjusted `privkey gen` entropy counter rendering to avoid CR-based overwrite and increased the initial entropy counter value.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `privkey gen` progress now prints the counter once (`Remaining entropy counter: 1000`) and updates only the numeric field using backspace-based fixed-width redraw (`\b` x5 + `%5d`), instead of carriage-return line overwrite.
+- Initial entropy counter value changed from `640` to `1000`.
+- No queue size constants were changed; output volume per update is reduced versus full-line redraw, which should slightly reduce transient USB/TTY queue pressure.
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, full firmware build cannot complete due missing Pico SDK configuration (`PICO_SDK_PATH` not set).
+
+### Remaining risks / TODO
+- Some terminal emulators may handle backspace redraw differently when local echo or line buffering is enabled; verify on target terminal clients used in operation.
+
 ## 2026-04-20
 
 ### Summary
