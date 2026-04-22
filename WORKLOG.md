@@ -955,3 +955,37 @@ Fix USB bootloader confirmation on CRLF terminals and resolve `cmd.c` build erro
 ### Remaining risks / TODOs
 - USB/TTY output queue sizes were not changed.
 - USB bootloader confirmation now consumes one extra class of pending newline input (`\r`/`\n` at `USB_BOOT_WAIT_Y`), which is expected and should reduce false aborts on CRLF/LFCR terminals.
+
+## 2026-04-22
+
+### Request
+Eliminate carriage-return based full-line redraw in command-line editing and switch to incremental terminal-safe updates for history navigation and in-line edits.
+
+### Files changed
+- `pico_tnc/tty.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Removed CR (`\r`) + full-line redraw path from command editor refresh handling.
+- Added incremental cursor helpers:
+  - left move uses repeated backspace writes
+  - right move reprints existing buffer bytes under cursor
+- Updated command history line replacement to avoid full repaint:
+  - moves to logical line start using backspace
+  - rewrites only changed suffix
+  - clears only leftover trailing characters with spaces
+  - restores cursor to target logical position
+- Updated middle-of-line edit behavior to redraw only affected tail segment:
+  - insert in middle prints inserted char + tail, then backtracks over tail
+  - backspace/delete in middle print shifted tail + trailing space, then backtracks
+- End-of-line fast paths remain minimal:
+  - append prints only new character
+  - backspace at end uses `BS SP BS`
+- Home/End and left/right cursor movement now use incremental cursor motion without CR-based repaint.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- USB/TTY output queue sizes were not changed; this change reduces full-line output bursts during editing and replaces them with tail-only writes.
+- Right-cursor movement relies on reprinting current buffer bytes, so behavior assumes printable ASCII command buffer content (same as existing command input constraints).
