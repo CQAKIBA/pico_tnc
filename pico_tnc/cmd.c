@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <strings.h>
 #include <ctype.h>
 #include "pico/stdlib.h"
+#include "pico/bootrom.h"
 #include "class/cdc/cdc_device.h"
 #include "pico/sync.h"
 
@@ -84,6 +85,7 @@ typedef enum {
     CMD_PENDING_PRIVKEY_GEN_COLLECTING,
     CMD_PENDING_SIGN_QSL_WIZARD,
     CMD_PENDING_SIGN_TX_CONFIRM,
+    CMD_PENDING_USB_BOOT_CONFIRM,
 } cmd_pending_state_t;
 
 static cmd_pending_state_t cmd_pending_state = CMD_PENDING_IDLE;
@@ -130,6 +132,21 @@ typedef struct {
 } sign_tx_ctx_t;
 
 static sign_tx_ctx_t sign_tx_ctx;
+
+typedef enum {
+    USB_BOOT_WAIT_Y = 0,
+    USB_BOOT_WAIT_E,
+    USB_BOOT_WAIT_S,
+    USB_BOOT_WAIT_ENTER,
+} usb_boot_confirm_state_t;
+
+typedef struct {
+    tty_t *ttyp;
+    usb_boot_confirm_state_t state;
+    uint32_t deadline_tick;
+} usb_boot_confirm_ctx_t;
+
+static usb_boot_confirm_ctx_t usb_boot_confirm_ctx;
 
 typedef struct {
     char qsl[24];
@@ -1893,6 +1910,45 @@ static bool cmd_disp(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+#define USB_BOOT_CONFIRM_TIMEOUT_TICKS (10 * 100)
+
+static void usb_boot_confirm_abort(tty_t *ttyp)
+{
+    cmd_pending_state = CMD_PENDING_IDLE;
+    cmd_pending_ttyp = NULL;
+    memset(&usb_boot_confirm_ctx, 0, sizeof(usb_boot_confirm_ctx));
+    tty_write_str(ttyp, "USB bootloader entry aborted.\r\n");
+    cmd_emit_prompt_if_idle(ttyp);
+}
+
+static bool usb_boot_confirm_start(tty_t *ttyp)
+{
+    usb_boot_confirm_ctx.ttyp = ttyp;
+    usb_boot_confirm_ctx.state = USB_BOOT_WAIT_Y;
+    usb_boot_confirm_ctx.deadline_tick = tnc_time() + USB_BOOT_CONFIRM_TIMEOUT_TICKS;
+    cmd_pending_state = CMD_PENDING_USB_BOOT_CONFIRM;
+    cmd_pending_ttyp = ttyp;
+
+    tty_write_str(ttyp, "WARNING: Enter USB bootloader mode?\r\n");
+    tty_write_str(ttyp, "This will disconnect the current session.\r\n");
+    tty_write_str(ttyp, "Press [Y] [E] [S] [Enter] in order within 10 seconds to continue; any other key aborts.\r\n");
+    return true;
+}
+
+static bool cmd_system(tty_t *ttyp, uint8_t *buf, int len)
+{
+    if (!buf || !*buf) return false;
+
+    uint8_t *p = skip_spaces(buf);
+    if (!strncasecmp((char *)p, "usb_bootloader", 14) && (p[14] == '\0' || isspace(p[14]))) {
+        p = skip_spaces(p + 14);
+        if (*p) return false;
+        return usb_boot_confirm_start(ttyp);
+    }
+
+    return false;
+}
+
 static bool cmd_about(tty_t *ttyp, uint8_t *buf, int len)
 {
     (void)buf;
@@ -1958,6 +2014,7 @@ static const cmd_t cmd_list[] = {
     { "KISS", 4, cmd_kiss, },
     { "PRIVKEY", 7, cmd_privkey, },
     { "SIGN", 4, cmd_sign, },
+    { "SYSTEM", 6, cmd_system, },
 
     // end mark
     { NULL, 0, NULL, },
@@ -2050,7 +2107,64 @@ bool cmd_consume_pending_input(tty_t *ttyp, int ch)
         return true;
     }
 
+    if (cmd_pending_state == CMD_PENDING_USB_BOOT_CONFIRM) {
+        if (!usb_boot_confirm_ctx.ttyp || ttyp != usb_boot_confirm_ctx.ttyp) return false;
+        if (ch == '\n') {
+            if (usb_boot_confirm_ctx.state == USB_BOOT_WAIT_ENTER) {
+                return true;
+            }
+            usb_boot_confirm_abort(ttyp);
+            return true;
+        }
+
+        switch (usb_boot_confirm_ctx.state) {
+            case USB_BOOT_WAIT_Y:
+                if (ch != 'Y') {
+                    usb_boot_confirm_abort(ttyp);
+                    return true;
+                }
+                usb_boot_confirm_ctx.state = USB_BOOT_WAIT_E;
+                return true;
+            case USB_BOOT_WAIT_E:
+                if (ch != 'E') {
+                    usb_boot_confirm_abort(ttyp);
+                    return true;
+                }
+                usb_boot_confirm_ctx.state = USB_BOOT_WAIT_S;
+                return true;
+            case USB_BOOT_WAIT_S:
+                if (ch != 'S') {
+                    usb_boot_confirm_abort(ttyp);
+                    return true;
+                }
+                usb_boot_confirm_ctx.state = USB_BOOT_WAIT_ENTER;
+                return true;
+            case USB_BOOT_WAIT_ENTER:
+                if (ch != '\r') {
+                    usb_boot_confirm_abort(ttyp);
+                    return true;
+                }
+                cmd_pending_state = CMD_PENDING_IDLE;
+                cmd_pending_ttyp = NULL;
+                memset(&usb_boot_confirm_ctx, 0, sizeof(usb_boot_confirm_ctx));
+                tty_write_str(ttyp, "Entering USB bootloader...\r\n");
+                reset_usb_boot(0, 0);
+                return true;
+            default:
+                usb_boot_confirm_abort(ttyp);
+                return true;
+        }
+    }
+
     return false;
+}
+
+void cmd_poll(void)
+{
+    if (cmd_pending_state != CMD_PENDING_USB_BOOT_CONFIRM) return;
+    if (!usb_boot_confirm_ctx.ttyp) return;
+    if ((int32_t)(tnc_time() - usb_boot_confirm_ctx.deadline_tick) < 0) return;
+    usb_boot_confirm_abort(usb_boot_confirm_ctx.ttyp);
 }
 
 

@@ -2,6 +2,46 @@
 
 This file tracks implementation work, validation, and remaining risks.
 
+## 2026-04-22
+
+### Summary
+Added a guarded CLI command `system usb_bootloader` that requires a strict `Y` → `E` → `S` → `Enter` key sequence within 10 seconds before rebooting into USB BOOTSEL mode.
+
+### Files changed
+- `pico_tnc/cmd.h`
+- `pico_tnc/cmd.c`
+- `pico_tnc/main.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added `SYSTEM` command handling with `system usb_bootloader` subcommand.
+- On `system usb_bootloader`, firmware now prints:
+  - `WARNING: Enter USB bootloader mode?`
+  - `This will disconnect the current session.`
+  - `Press [Y] [E] [S] [Enter] in order within 10 seconds to continue; any other key aborts.`
+- Added a dedicated pending-input state for USB bootloader confirmation:
+  - state machine: `WAIT_Y`, `WAIT_E`, `WAIT_S`, `WAIT_ENTER`
+  - any unexpected single character aborts immediately
+  - accepts `Enter` as `\r`, `\n`, or `\r\n` as sequential input (`\r` triggers success, following `\n` is ignored by reset path)
+  - 10-second timeout aborts automatically
+- Success path prints `Entering USB bootloader...` then calls `reset_usb_boot(0, 0);`.
+- Abort/timeout path prints `USB bootloader entry aborted.` and returns to normal CLI prompt handling.
+- Added `cmd_poll()` to monitor timeout in the main loop and integrated it in `main.c`.
+- Updated help and README command listings (English/Japanese) to document the new command.
+- RAM/queue impact note: only a small new pending-context struct and a few short output lines were added; no queue size constants or buffer limits were changed.
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, full firmware build cannot complete due missing Pico SDK configuration (`PICO_SDK_PATH` not set).
+
+### Remaining risks / TODO
+- Strict per-character validation intentionally treats noisy or line-buffered terminals as abort cases; behavior should be confirmed on actual field terminal setups used by maintainers.
+
 ## 2026-04-21
 
 ### Summary

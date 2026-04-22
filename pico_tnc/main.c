@@ -137,6 +137,7 @@ int main()
 
         // non-blocking help output
         help_poll();
+        cmd_poll();
 
 #ifdef BUSY_PIN
 //        gpio_put(BUSY_PIN, 0);
