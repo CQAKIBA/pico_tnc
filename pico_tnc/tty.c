@@ -104,11 +104,25 @@ static int8_t history_nav_index[TTY_N];
 static uint8_t history_nav_saved[TTY_N][CMD_BUF_LEN + 1];
 static uint16_t history_nav_saved_len[TTY_N];
 
+static void tty_rewind_and_clear_cmdline(tty_t *ttyp)
+{
+    int prompt_len = (int)strlen(CMD_PROMPT);
+    int rewind = prompt_len + ttyp->cmd_cursor;
+    int clear_len = prompt_len + ttyp->cmd_idx;
+
+    while (rewind-- > 0) tty_write_char(ttyp, BS);
+    while (clear_len-- > 0) tty_write_char(ttyp, SP);
+
+    clear_len = prompt_len + ttyp->cmd_idx;
+    while (clear_len-- > 0) tty_write_char(ttyp, BS);
+}
+
 static void tty_refresh_cmdline(tty_t *ttyp)
 {
     if (!param.echo) return;
 
-    tty_write_str(ttyp, "\r" CMD_PROMPT);
+    tty_rewind_and_clear_cmdline(ttyp);
+    tty_write_str(ttyp, CMD_PROMPT);
     tty_write(ttyp, ttyp->cmd_buf, ttyp->cmd_idx);
     tty_write_str(ttyp, "\x1b[K");
     if (ttyp->cmd_idx > ttyp->cmd_cursor) {
