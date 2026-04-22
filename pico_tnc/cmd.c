@@ -86,6 +86,7 @@ typedef enum {
     CMD_PENDING_SIGN_QSL_WIZARD,
     CMD_PENDING_SIGN_TX_CONFIRM,
     CMD_PENDING_USB_BOOT_CONFIRM,
+    CMD_PENDING_TERMTEST,
 } cmd_pending_state_t;
 
 static cmd_pending_state_t cmd_pending_state = CMD_PENDING_IDLE;
@@ -180,12 +181,99 @@ typedef struct {
 static soft_clock_t soft_clock;
 static sign_qsl_wizard_ctx_t sign_qsl_wizard_ctx;
 
+typedef struct {
+    tty_t *ttyp;
+    uint8_t bytes[16];
+    int len;
+    uint32_t last_tick;
+} termtest_ctx_t;
+
+static termtest_ctx_t termtest_ctx;
+
 static const uint8_t SECP256K1_ORDER[32] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
     0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
     0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41
 };
+
+#define TERMTEST_FLUSH_TIMEOUT_TICKS 2
+
+static char const *termtest_label_for_byte(uint8_t b)
+{
+    switch (b) {
+        case 0x08: return "BS";
+        case 0x09: return "TAB";
+        case 0x0d: return "CR";
+        case 0x0a: return "LF";
+        case 0x1b: return "ESC";
+        case 0x7f: return "DEL";
+        default: return NULL;
+    }
+}
+
+static void termtest_flush_line(void)
+{
+    char hex_part[96];
+    char desc_part[96];
+    int hex_len = 0;
+    int desc_len = 0;
+
+    if (!termtest_ctx.ttyp || termtest_ctx.len <= 0) return;
+
+    for (int i = 0; i < termtest_ctx.len; i++) {
+        uint8_t b = termtest_ctx.bytes[i];
+        char const *label = termtest_label_for_byte(b);
+
+        if (hex_len < (int)sizeof(hex_part) - 8) {
+            hex_len += snprintf(hex_part + hex_len,
+                                sizeof(hex_part) - hex_len,
+                                "%s0x%02X",
+                                i == 0 ? "" : " ",
+                                b);
+        }
+
+        if (desc_len < (int)sizeof(desc_part) - 8) {
+            if (label) {
+                desc_len += snprintf(desc_part + desc_len,
+                                     sizeof(desc_part) - desc_len,
+                                     "%s%s",
+                                     desc_len == 0 ? "" : " ",
+                                     label);
+            } else if (b >= 0x20 && b <= 0x7e) {
+                desc_len += snprintf(desc_part + desc_len,
+                                     sizeof(desc_part) - desc_len,
+                                     "%s'%c'",
+                                     desc_len == 0 ? "" : " ",
+                                     b);
+            }
+        }
+    }
+
+    if (hex_len > 0) {
+        tty_write(termtest_ctx.ttyp, (uint8_t const *)hex_part, hex_len);
+        if (desc_len > 0) {
+            tty_write_str(termtest_ctx.ttyp, "  ");
+            tty_write(termtest_ctx.ttyp, (uint8_t const *)desc_part, desc_len);
+        }
+        tty_write_str(termtest_ctx.ttyp, "\r\n");
+    }
+    termtest_ctx.len = 0;
+}
+
+static bool termtest_start(tty_t *ttyp)
+{
+    memset(&termtest_ctx, 0, sizeof(termtest_ctx));
+    termtest_ctx.ttyp = ttyp;
+    termtest_ctx.last_tick = tnc_time();
+    cmd_pending_state = CMD_PENDING_TERMTEST;
+    cmd_pending_ttyp = ttyp;
+
+    tty_write_str(ttyp, "termtest mode\r\n");
+    tty_write_str(ttyp, "Press keys to inspect received bytes.\r\n");
+    tty_write_str(ttyp, "Ctrl+C to exit.\r\n");
+    return true;
+}
 
 static void privkey_gen_reset(void)
 {
@@ -2045,6 +2133,13 @@ static bool cmd_about(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+static bool cmd_termtest(tty_t *ttyp, uint8_t *buf, int len)
+{
+    (void)len;
+    if (buf && *skip_spaces(buf)) return false;
+    return termtest_start(ttyp);
+}
+
 static const cmd_t cmd_list[] = {
     { "HELP", 4, cmd_help, },
     { "?", 1, cmd_help, },
@@ -2070,6 +2165,7 @@ static const cmd_t cmd_list[] = {
     { "PRIVKEY", 7, cmd_privkey, },
     { "SIGN", 4, cmd_sign, },
     { "SYSTEM", 6, cmd_system, },
+    { "TERMTEST", 8, cmd_termtest, },
 
     // end mark
     { NULL, 0, NULL, },
@@ -2213,15 +2309,46 @@ bool cmd_consume_pending_input(tty_t *ttyp, int ch)
         }
     }
 
+    if (cmd_pending_state == CMD_PENDING_TERMTEST) {
+        if (!termtest_ctx.ttyp || ttyp != termtest_ctx.ttyp) return false;
+
+        if (ch == '\n') return true;
+
+        if (ch == '\x03') {
+            termtest_flush_line();
+            cmd_pending_state = CMD_PENDING_IDLE;
+            cmd_pending_ttyp = NULL;
+            memset(&termtest_ctx, 0, sizeof(termtest_ctx));
+            tty_write_str(ttyp, "Exited termtest mode.\r\n");
+            cmd_emit_prompt_if_idle(ttyp);
+            return true;
+        }
+
+        if (termtest_ctx.len >= (int)sizeof(termtest_ctx.bytes)) {
+            termtest_flush_line();
+        }
+        termtest_ctx.bytes[termtest_ctx.len++] = (uint8_t)ch;
+        termtest_ctx.last_tick = tnc_time();
+        return true;
+    }
+
     return false;
 }
 
 void cmd_poll(void)
 {
-    if (cmd_pending_state != CMD_PENDING_USB_BOOT_CONFIRM) return;
-    if (!usb_boot_confirm_ctx.ttyp) return;
-    if ((int32_t)(tnc_time() - usb_boot_confirm_ctx.deadline_tick) < 0) return;
-    usb_boot_confirm_abort(usb_boot_confirm_ctx.ttyp);
+    if (cmd_pending_state == CMD_PENDING_USB_BOOT_CONFIRM) {
+        if (!usb_boot_confirm_ctx.ttyp) return;
+        if ((int32_t)(tnc_time() - usb_boot_confirm_ctx.deadline_tick) < 0) return;
+        usb_boot_confirm_abort(usb_boot_confirm_ctx.ttyp);
+        return;
+    }
+
+    if (cmd_pending_state == CMD_PENDING_TERMTEST) {
+        if (!termtest_ctx.ttyp || termtest_ctx.len <= 0) return;
+        if ((int32_t)(tnc_time() - termtest_ctx.last_tick) < TERMTEST_FLUSH_TIMEOUT_TICKS) return;
+        termtest_flush_line();
+    }
 }
 
 

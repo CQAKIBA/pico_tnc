@@ -5,6 +5,38 @@ This file tracks implementation work, validation, and remaining risks.
 ## 2026-04-22
 
 ### Summary
+Added a `termtest` command for raw terminal byte inspection mode.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added new CLI command `termtest`.
+- `termtest` enters a dedicated pending-input mode and prints startup guidance:
+  - `termtest mode`
+  - `Press keys to inspect received bytes.`
+  - `Ctrl+C to exit.`
+- In this mode, input is consumed before normal line editor/ANSI key handling, so escape sequences, arrows, delete, and other edit keys are shown as raw received bytes instead of being interpreted.
+- Received bytes are emitted as hexadecimal (`0xNN`) with readable labels for common control bytes (`BS`, `TAB`, `CR`, `LF`, `ESC`, `DEL`).
+- Printable ASCII bytes are appended as readable characters in the same line.
+- Mode exits only on `Ctrl+C`, then prints `Exited termtest mode.` and returns to normal command prompt.
+- Queue/RAM impact note: this adds a small fixed command-layer context (`16`-byte capture buffer + metadata) and two small temporary formatting buffers during flush; no queue size constants were changed.
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, full firmware build cannot complete due missing Pico SDK configuration (`PICO_SDK_PATH` not set), so hardware/runtime verification of `termtest` remains pending.
+
+### Remaining risks / TODO
+- Byte grouping for multi-byte terminal escape sequences is based on a short idle-time flush window; grouping may differ slightly across terminal/transport latency conditions.
+- Confirm behavior on actual USB/UART terminals used in operation (especially CR/LF transmission differences and key-repeat bursts).
+
+### Summary
 Updated `sign qsl` wizard completion behavior to auto-register an equivalent one-line `sign qsl ...` command into CLI history.
 
 ### Files changed
