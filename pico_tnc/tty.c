@@ -514,9 +514,8 @@ void tty_input(tty_t *ttyp, int ch)
             ttyp->esc_state = 1;
             break;
 
-        case BS:
+        case BS:  //(BS|CTRL_H)
         case DEL:
-        case CTRL_H:
             tty_history_reset_nav(ttyp);
             tty_backspace(ttyp);
             break;
