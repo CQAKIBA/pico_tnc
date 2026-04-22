@@ -186,8 +186,8 @@ static void tty_history_reset_nav(tty_t *ttyp)
 static void tty_history_prev(tty_t *ttyp)
 {
     int tty_id = ttyp->num;
-    uint8_t oldest;
-    uint8_t idx;
+    uint8_t next_idx;
+    uint8_t distance_from_head;
 
     if (cmd_history_count == 0) {
         if (param.echo) tty_write_char(ttyp, BELL);
@@ -202,15 +202,16 @@ static void tty_history_prev(tty_t *ttyp)
         history_nav_saved[tty_id][ttyp->cmd_idx] = '\0';
     }
 
-    oldest = (cmd_history_head + CMD_HISTORY_SLOTS - cmd_history_count) % CMD_HISTORY_SLOTS;
-    if (history_nav_index[tty_id] == oldest) {
+    next_idx = (history_nav_index[tty_id] + CMD_HISTORY_SLOTS - 1) % CMD_HISTORY_SLOTS;
+    distance_from_head = (cmd_history_head + CMD_HISTORY_SLOTS - next_idx) % CMD_HISTORY_SLOTS;
+    if ((cmd_history_count < CMD_HISTORY_SLOTS && distance_from_head == 0) ||
+        distance_from_head > cmd_history_count) {
         if (param.echo) tty_write_char(ttyp, BELL);
         return;
     }
 
-    history_nav_index[tty_id] = (history_nav_index[tty_id] + CMD_HISTORY_SLOTS - 1) % CMD_HISTORY_SLOTS;
-    idx = (uint8_t)history_nav_index[tty_id];
-    tty_set_cmdline(ttyp, cmd_history[idx], cmd_history_len[idx]);
+    history_nav_index[tty_id] = next_idx;
+    tty_set_cmdline(ttyp, cmd_history[next_idx], cmd_history_len[next_idx]);
 }
 
 static void tty_history_next(tty_t *ttyp)
