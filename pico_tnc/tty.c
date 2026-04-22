@@ -104,78 +104,34 @@ static int8_t history_nav_index[TTY_N];
 static uint8_t history_nav_saved[TTY_N][CMD_BUF_LEN + 1];
 static uint16_t history_nav_saved_len[TTY_N];
 
-static void tty_move_cursor_left(tty_t *ttyp, int count)
+static void tty_refresh_cmdline(tty_t *ttyp)
 {
-    int moved;
+    if (!param.echo) return;
 
-    if (count <= 0) return;
-    if (count > ttyp->cmd_cursor) count = ttyp->cmd_cursor;
-    if (!param.echo) {
-        ttyp->cmd_cursor -= count;
-        return;
+    tty_write_str(ttyp, "\r" CMD_PROMPT);
+    tty_write(ttyp, ttyp->cmd_buf, ttyp->cmd_idx);
+    tty_write_str(ttyp, "\x1b[K");
+    if (ttyp->cmd_idx > ttyp->cmd_cursor) {
+        char seq[24];
+        int n = snprintf(seq, sizeof(seq), "\x1b[%dD", ttyp->cmd_idx - ttyp->cmd_cursor);
+        if (n > 0) tty_write(ttyp, (uint8_t *)seq, n);
     }
-
-    moved = count;
-    while (count-- > 0) {
-        tty_write_char(ttyp, BS);
-    }
-    ttyp->cmd_cursor -= moved;
-}
-
-static void tty_move_cursor_right(tty_t *ttyp, int count)
-{
-    if (count <= 0) return;
-    if (count > ttyp->cmd_idx - ttyp->cmd_cursor) count = ttyp->cmd_idx - ttyp->cmd_cursor;
-    if (!param.echo) {
-        ttyp->cmd_cursor += count;
-        return;
-    }
-
-    tty_write(ttyp, &ttyp->cmd_buf[ttyp->cmd_cursor], count);
-    ttyp->cmd_cursor += count;
 }
 
 static void tty_set_cmdline(tty_t *ttyp, uint8_t const *line, int len)
 {
-    int old_len = ttyp->cmd_idx;
-    int old_cursor = ttyp->cmd_cursor;
-    int common = 0;
-
     if (len < 0) len = 0;
     if (len > CMD_BUF_LEN) len = CMD_BUF_LEN;
-
-    if (line && len > 0) {
-        while (common < len && common < old_len && ttyp->cmd_buf[common] == line[common]) {
-            common++;
-        }
-    }
-
-    if (line && len > 0) memcpy(ttyp->cmd_buf, line, len);
+    if (len > 0 && line) memcpy(ttyp->cmd_buf, line, len);
     ttyp->cmd_idx = len;
+    ttyp->cmd_cursor = len;
     ttyp->cmd_buf[len] = '\0';
+    tty_refresh_cmdline(ttyp);
+}
 
-    if (!param.echo) {
-        ttyp->cmd_cursor = len;
-        return;
-    }
-
-    tty_move_cursor_left(ttyp, old_cursor);
-
-    if (common > 0) {
-        tty_write(ttyp, ttyp->cmd_buf, common);
-    }
-
-    if (len > common) {
-        tty_write(ttyp, &ttyp->cmd_buf[common], len - common);
-    }
-    if (old_len > len) {
-        for (int i = 0; i < (old_len - len); i++) {
-            tty_write_char(ttyp, SP);
-        }
-    }
-
-    ttyp->cmd_cursor = old_len > len ? old_len : len;
-    tty_move_cursor_left(ttyp, ttyp->cmd_cursor - len);
+static void tty_move_cursor_left(tty_t *ttyp, int count)
+{
+    while (count-- > 0) tty_write_char(ttyp, BS);
 }
 
 static void tty_history_store(uint8_t const *line, int len)
@@ -268,7 +224,9 @@ static void tty_history_next(tty_t *ttyp)
 
 static void tty_insert_char(tty_t *ttyp, uint8_t ch)
 {
-    int old_cursor = ttyp->cmd_cursor;
+    int old_cursor;
+    int tail_len;
+    int move_back;
 
     if (!(ch >= ' ' && ch <= '~')) {
         if (param.echo) tty_write_char(ttyp, BELL);
@@ -284,19 +242,22 @@ static void tty_insert_char(tty_t *ttyp, uint8_t ch)
         return;
     }
 
-    memmove(&ttyp->cmd_buf[ttyp->cmd_cursor + 1],
-            &ttyp->cmd_buf[ttyp->cmd_cursor],
-            ttyp->cmd_idx - ttyp->cmd_cursor);
-    ttyp->cmd_buf[ttyp->cmd_cursor++] = ch;
+    old_cursor = ttyp->cmd_cursor;
+    memmove(&ttyp->cmd_buf[old_cursor + 1],
+            &ttyp->cmd_buf[old_cursor],
+            ttyp->cmd_idx - old_cursor);
+    ttyp->cmd_buf[old_cursor] = ch;
     ttyp->cmd_idx++;
+    ttyp->cmd_cursor = old_cursor + 1;
     ttyp->cmd_buf[ttyp->cmd_idx] = '\0';
+
     if (param.echo) {
-        int tail_len = ttyp->cmd_idx - old_cursor;
+        tail_len = ttyp->cmd_idx - old_cursor;
+        move_back = ttyp->cmd_idx - ttyp->cmd_cursor;
         tty_write(ttyp, &ttyp->cmd_buf[old_cursor], tail_len);
-        tty_move_cursor_left(ttyp, ttyp->cmd_idx - ttyp->cmd_cursor);
+        tty_move_cursor_left(ttyp, move_back);
     }
 }
-
 static void tty_backspace(tty_t *ttyp)
 {
     if (ttyp->cmd_cursor <= 0) {
@@ -312,20 +273,29 @@ static void tty_backspace(tty_t *ttyp)
         return;
     }
 
+    if (param.echo) {
+        /* Move physical cursor to the deleted character position first. */
+        tty_write_str(ttyp, "\b");
+    }
+
     memmove(&ttyp->cmd_buf[ttyp->cmd_cursor - 1],
             &ttyp->cmd_buf[ttyp->cmd_cursor],
             ttyp->cmd_idx - ttyp->cmd_cursor);
+
     --ttyp->cmd_cursor;
     --ttyp->cmd_idx;
     ttyp->cmd_buf[ttyp->cmd_idx] = '\0';
+
     if (param.echo) {
         int tail_len = ttyp->cmd_idx - ttyp->cmd_cursor;
-        if (tail_len > 0) tty_write(ttyp, &ttyp->cmd_buf[ttyp->cmd_cursor], tail_len);
+
+        if (tail_len > 0) {
+            tty_write(ttyp, &ttyp->cmd_buf[ttyp->cmd_cursor], tail_len);
+        }
         tty_write_char(ttyp, SP);
         tty_move_cursor_left(ttyp, tail_len + 1);
     }
 }
-
 static void tty_delete_at_cursor(tty_t *ttyp)
 {
     if (ttyp->cmd_cursor >= ttyp->cmd_idx) {
@@ -336,16 +306,20 @@ static void tty_delete_at_cursor(tty_t *ttyp)
     memmove(&ttyp->cmd_buf[ttyp->cmd_cursor],
             &ttyp->cmd_buf[ttyp->cmd_cursor + 1],
             ttyp->cmd_idx - ttyp->cmd_cursor - 1);
+
     --ttyp->cmd_idx;
     ttyp->cmd_buf[ttyp->cmd_idx] = '\0';
+
     if (param.echo) {
         int tail_len = ttyp->cmd_idx - ttyp->cmd_cursor;
-        if (tail_len > 0) tty_write(ttyp, &ttyp->cmd_buf[ttyp->cmd_cursor], tail_len);
+
+        if (tail_len > 0) {
+            tty_write(ttyp, &ttyp->cmd_buf[ttyp->cmd_cursor], tail_len);
+        }
         tty_write_char(ttyp, SP);
         tty_move_cursor_left(ttyp, tail_len + 1);
     }
 }
-
 static bool tty_handle_ansi_sequence(tty_t *ttyp, int ch)
 {
     if (ttyp->esc_state == 0) return false;
@@ -381,25 +355,31 @@ static bool tty_handle_ansi_sequence(tty_t *ttyp, int ch)
             break;
         case 'C':
             if (ttyp->cmd_cursor < ttyp->cmd_idx) {
-                tty_move_cursor_right(ttyp, 1);
+                ttyp->cmd_cursor++;
+                if (param.echo) tty_write_str(ttyp, "\x1b[C");
             } else if (param.echo) tty_write_char(ttyp, BELL);
             break;
         case 'D':
             if (ttyp->cmd_cursor > 0) {
-                tty_move_cursor_left(ttyp, 1);
+                ttyp->cmd_cursor--;
+                if (param.echo) tty_write_str(ttyp, "\x1b[D");
             } else if (param.echo) tty_write_char(ttyp, BELL);
             break;
         case 'H':
-            tty_move_cursor_left(ttyp, ttyp->cmd_cursor);
+            ttyp->cmd_cursor = 0;
+            tty_refresh_cmdline(ttyp);
             break;
         case 'F':
-            tty_move_cursor_right(ttyp, ttyp->cmd_idx - ttyp->cmd_cursor);
+            ttyp->cmd_cursor = ttyp->cmd_idx;
+            tty_refresh_cmdline(ttyp);
             break;
         case '~':
             if (ttyp->esc_param == 1 || ttyp->esc_param == 7) {
-                tty_move_cursor_left(ttyp, ttyp->cmd_cursor);
+                ttyp->cmd_cursor = 0;
+                tty_refresh_cmdline(ttyp);
             } else if (ttyp->esc_param == 4 || ttyp->esc_param == 8) {
-                tty_move_cursor_right(ttyp, ttyp->cmd_idx - ttyp->cmd_cursor);
+                ttyp->cmd_cursor = ttyp->cmd_idx;
+                tty_refresh_cmdline(ttyp);
             } else if (ttyp->esc_param == 3) {
                 tty_delete_at_cursor(ttyp);
             }
@@ -514,7 +494,7 @@ void tty_input(tty_t *ttyp, int ch)
             ttyp->esc_state = 1;
             break;
 
-        case BS:  //(BS|CTRL_H)
+        case BS: //(BS|CTRL_H)
         case DEL:
             tty_history_reset_nav(ttyp);
             tty_backspace(ttyp);
@@ -530,22 +510,26 @@ void tty_input(tty_t *ttyp, int ch)
 
         case CTRL_B:
             if (ttyp->cmd_cursor > 0) {
-                tty_move_cursor_left(ttyp, 1);
+                ttyp->cmd_cursor--;
+                if (param.echo) tty_write_str(ttyp, (uint8_t const *)"\x1b[D");
             } else if (param.echo) tty_write_char(ttyp, BELL);
             break;
 
         case CTRL_F:
             if (ttyp->cmd_cursor < ttyp->cmd_idx) {
-                tty_move_cursor_right(ttyp, 1);
+                ttyp->cmd_cursor++;
+                if (param.echo) tty_write_str(ttyp, (uint8_t const *)"\x1b[C");
             } else if (param.echo) tty_write_char(ttyp, BELL);
             break;
 
         case CTRL_A:
-            tty_move_cursor_left(ttyp, ttyp->cmd_cursor);
+            ttyp->cmd_cursor = 0;
+            tty_refresh_cmdline(ttyp);
             break;
 
         case CTRL_E:
-            tty_move_cursor_right(ttyp, ttyp->cmd_idx - ttyp->cmd_cursor);
+            ttyp->cmd_cursor = ttyp->cmd_idx;
+            tty_refresh_cmdline(ttyp);
             break;
 
         case CR:
