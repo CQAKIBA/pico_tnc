@@ -870,3 +870,25 @@ Add `sign` readiness check mode (no args), move SIGN prerequisite checks to wiza
 ### Remaining risks / TODOs
 - `SIGN` no-arg status now derives/display active address text; if address derivation fails it reports `(calculation failed)`.
 - USB/TTY output queue sizes were not changed; message volume changed slightly (status lines added for `SIGN` no-arg).
+
+## 2026-04-22
+
+### Request
+Fix USB bootloader confirmation on CRLF terminals and resolve `cmd.c` build errors (`MONA_ERR_INVALID_ARG`, `ax25_sendVia` implicit declaration).
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `system usb_bootloader` pending confirmation now tolerates CRLF/LFCR line-ending leftovers before the first `Y` key:
+  - while in `USB_BOOT_WAIT_Y`, incoming `\n` and `\r` are ignored instead of aborting.
+- SIGN prerequisite status display no longer relies on undeclared `ax25_sendVia`; it now renders `UNPROTO` using existing callsign formatting logic.
+- Fixed Monacoin error enum initialization from `MONA_ERR_INVALID_ARG` to `MONA_ERR_ARGS`.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- USB/TTY output queue sizes were not changed.
+- USB bootloader confirmation now consumes one extra class of pending newline input (`\r`/`\n` at `USB_BOOT_WAIT_Y`), which is expected and should reduce false aborts on CRLF/LFCR terminals.

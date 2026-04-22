@@ -1304,7 +1304,7 @@ static bool sign_check_prerequisites(tty_t *ttyp, bool print_status, bool print_
 
     if (print_status) {
         mona_address_info_t addrs;
-        mona_err_t err = MONA_ERR_INVALID_ARG;
+        mona_err_t err = MONA_ERR_ARGS;
         const char *addr_text = "(not set)";
 
         tty_write_str(ttyp, "MYCALL  : ");
@@ -1314,9 +1314,13 @@ static bool sign_check_prerequisites(tty_t *ttyp, bool print_status, bool print_
 
         tty_write_str(ttyp, "UNPROTO : ");
         if (param.unproto[0].call[0]) {
-            uint8_t path[80];
-            ax25_sendVia(path, param.unproto, (uint8_t)strlen((char *)param.unproto), false);
-            tty_write_str(ttyp, path);
+            int i;
+            for (i = 0; i < UNPROTO_N; i++) {
+                uint8_t temp[10];
+                if (!param.unproto[i].call[0]) break;
+                if (i > 0) tty_write_str(ttyp, " V ");
+                tty_write(ttyp, temp, callsign2ascii(temp, &param.unproto[i]));
+            }
         } else {
             tty_write_str(ttyp, "(not set)");
         }
@@ -2110,12 +2114,14 @@ bool cmd_consume_pending_input(tty_t *ttyp, int ch)
     if (cmd_pending_state == CMD_PENDING_USB_BOOT_CONFIRM) {
         if (!usb_boot_confirm_ctx.ttyp || ttyp != usb_boot_confirm_ctx.ttyp) return false;
         if (ch == '\n') {
-            if (usb_boot_confirm_ctx.state == USB_BOOT_WAIT_ENTER) {
+            if (usb_boot_confirm_ctx.state == USB_BOOT_WAIT_ENTER ||
+                usb_boot_confirm_ctx.state == USB_BOOT_WAIT_Y) {
                 return true;
             }
             usb_boot_confirm_abort(ttyp);
             return true;
         }
+        if (ch == '\r' && usb_boot_confirm_ctx.state == USB_BOOT_WAIT_Y) return true;
 
         switch (usb_boot_confirm_ctx.state) {
             case USB_BOOT_WAIT_Y:
