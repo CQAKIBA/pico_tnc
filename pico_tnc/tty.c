@@ -104,24 +104,24 @@ static int8_t history_nav_index[TTY_N];
 static uint8_t history_nav_saved[TTY_N][CMD_BUF_LEN + 1];
 static uint16_t history_nav_saved_len[TTY_N];
 
-static void tty_rewind_and_clear_cmdline(tty_t *ttyp)
+static void tty_rewind_and_clear_cmdline(tty_t *ttyp, int old_idx, int old_cursor)
 {
     int prompt_len = (int)strlen(CMD_PROMPT);
-    int rewind = prompt_len + ttyp->cmd_cursor;
-    int clear_len = prompt_len + ttyp->cmd_idx;
+    int rewind = prompt_len + old_cursor;
+    int clear_len = prompt_len + ((old_idx > ttyp->cmd_idx) ? old_idx : ttyp->cmd_idx);
 
     while (rewind-- > 0) tty_write_char(ttyp, BS);
     while (clear_len-- > 0) tty_write_char(ttyp, SP);
 
-    clear_len = prompt_len + ttyp->cmd_idx;
+    clear_len = prompt_len + ((old_idx > ttyp->cmd_idx) ? old_idx : ttyp->cmd_idx);
     while (clear_len-- > 0) tty_write_char(ttyp, BS);
 }
 
-static void tty_refresh_cmdline(tty_t *ttyp)
+static void tty_refresh_cmdline(tty_t *ttyp, int old_idx, int old_cursor)
 {
     if (!param.echo) return;
 
-    tty_rewind_and_clear_cmdline(ttyp);
+    tty_rewind_and_clear_cmdline(ttyp, old_idx, old_cursor);
     tty_write_str(ttyp, CMD_PROMPT);
     tty_write(ttyp, ttyp->cmd_buf, ttyp->cmd_idx);
     tty_write_str(ttyp, "\x1b[K");
@@ -134,13 +134,16 @@ static void tty_refresh_cmdline(tty_t *ttyp)
 
 static void tty_set_cmdline(tty_t *ttyp, uint8_t const *line, int len)
 {
+    int old_idx = ttyp->cmd_idx;
+    int old_cursor = ttyp->cmd_cursor;
+
     if (len < 0) len = 0;
     if (len > CMD_BUF_LEN) len = CMD_BUF_LEN;
     if (len > 0 && line) memcpy(ttyp->cmd_buf, line, len);
     ttyp->cmd_idx = len;
     ttyp->cmd_cursor = len;
     ttyp->cmd_buf[len] = '\0';
-    tty_refresh_cmdline(ttyp);
+    tty_refresh_cmdline(ttyp, old_idx, old_cursor);
 }
 
 static void tty_move_cursor_left(tty_t *ttyp, int count)
@@ -380,20 +383,32 @@ static bool tty_handle_ansi_sequence(tty_t *ttyp, int ch)
             } else if (param.echo) tty_write_char(ttyp, BELL);
             break;
         case 'H':
+        {
+            int old_idx = ttyp->cmd_idx;
+            int old_cursor = ttyp->cmd_cursor;
             ttyp->cmd_cursor = 0;
-            tty_refresh_cmdline(ttyp);
+            tty_refresh_cmdline(ttyp, old_idx, old_cursor);
             break;
+        }
         case 'F':
+        {
+            int old_idx = ttyp->cmd_idx;
+            int old_cursor = ttyp->cmd_cursor;
             ttyp->cmd_cursor = ttyp->cmd_idx;
-            tty_refresh_cmdline(ttyp);
+            tty_refresh_cmdline(ttyp, old_idx, old_cursor);
             break;
+        }
         case '~':
             if (ttyp->esc_param == 1 || ttyp->esc_param == 7) {
+                int old_idx = ttyp->cmd_idx;
+                int old_cursor = ttyp->cmd_cursor;
                 ttyp->cmd_cursor = 0;
-                tty_refresh_cmdline(ttyp);
+                tty_refresh_cmdline(ttyp, old_idx, old_cursor);
             } else if (ttyp->esc_param == 4 || ttyp->esc_param == 8) {
+                int old_idx = ttyp->cmd_idx;
+                int old_cursor = ttyp->cmd_cursor;
                 ttyp->cmd_cursor = ttyp->cmd_idx;
-                tty_refresh_cmdline(ttyp);
+                tty_refresh_cmdline(ttyp, old_idx, old_cursor);
             } else if (ttyp->esc_param == 3) {
                 tty_delete_at_cursor(ttyp);
             }
@@ -537,14 +552,22 @@ void tty_input(tty_t *ttyp, int ch)
             break;
 
         case CTRL_A:
+        {
+            int old_idx = ttyp->cmd_idx;
+            int old_cursor = ttyp->cmd_cursor;
             ttyp->cmd_cursor = 0;
-            tty_refresh_cmdline(ttyp);
+            tty_refresh_cmdline(ttyp, old_idx, old_cursor);
             break;
+        }
 
         case CTRL_E:
+        {
+            int old_idx = ttyp->cmd_idx;
+            int old_cursor = ttyp->cmd_cursor;
             ttyp->cmd_cursor = ttyp->cmd_idx;
-            tty_refresh_cmdline(ttyp);
+            tty_refresh_cmdline(ttyp, old_idx, old_cursor);
             break;
+        }
 
         case CR:
             if (param.echo) tty_write_str(ttyp, (uint8_t const *)"\r\n");

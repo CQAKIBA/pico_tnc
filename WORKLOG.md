@@ -1047,3 +1047,26 @@ Change command history recall redraw (↑/↓) to avoid carriage return and inst
 
 ### Remaining risks / TODOs
 - Refresh still uses ANSI `ESC[K` to clear to end of line after redraw; terminals without ANSI erase support may still show stale characters.
+
+## 2026-04-22
+
+### Request
+Separate responsibilities between `tty_set_cmdline()` and `tty_refresh_cmdline()` by preserving the pre-update command-line state and using it during redraw.
+
+### Files changed
+- `pico_tnc/tty.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `tty_set_cmdline()` now snapshots old command-line state (`old_idx`, `old_cursor`) before mutating `cmd_idx/cmd_cursor`, then passes that old state into redraw.
+- `tty_refresh_cmdline()` and `tty_rewind_and_clear_cmdline()` now take old state parameters.
+- Rewind distance now uses `CMD_PROMPT + old_cursor`.
+- Clear span now uses `CMD_PROMPT + max(old_idx, new_idx)` to safely erase leftovers when new content is shorter than the old line.
+- Existing Home/End redraw call sites (`CTRL_A/CTRL_E` and ANSI `H/F/~`) now also pass preserved old state before cursor updates.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- USB/TTY output queue sizes were not changed.
+- Redraw still relies on ANSI `ESC[K` for end-of-line clearing support.
