@@ -204,6 +204,7 @@ static void tty_history_prev(tty_t *ttyp)
 
     next_idx = (history_nav_index[tty_id] + CMD_HISTORY_SLOTS - 1) % CMD_HISTORY_SLOTS;
     distance_from_head = (cmd_history_head + CMD_HISTORY_SLOTS - next_idx) % CMD_HISTORY_SLOTS;
+
     if ((cmd_history_count < CMD_HISTORY_SLOTS && distance_from_head == 0) ||
         distance_from_head > cmd_history_count) {
         if (param.echo) tty_write_char(ttyp, BELL);
