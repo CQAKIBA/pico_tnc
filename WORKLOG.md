@@ -1021,3 +1021,29 @@ Eliminate carriage-return based full-line redraw in command-line editing and swi
 ### Remaining risks / TODOs
 - USB/TTY output queue sizes were not changed; this change reduces full-line output bursts during editing and replaces them with tail-only writes.
 - Right-cursor movement relies on reprinting current buffer bytes, so behavior assumes printable ASCII command buffer content (same as existing command input constraints).
+
+## 2026-04-22
+
+### Request
+Change command history recall redraw (↑/↓) to avoid carriage return and instead rewind with backspaces to line head before clearing/reprinting.
+
+### Files changed
+- `pico_tnc/tty.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Updated command-line refresh path to stop emitting `\r` when redrawing the editable line.
+- Added `tty_rewind_and_clear_cmdline()`:
+  - rewinds to line head using repeated BS based on `prompt + current cursor`
+  - clears visible prompt+buffer using spaces
+  - rewinds again via BS, then prints `cmd: ` and current buffer
+- History navigation (`↑`/`↓`) now uses the same refresh path without CR, reducing terminal-dependent auto line-feed behavior.
+- Queue/RAM impact note:
+  - no queue size changes
+  - redraw now emits more single-character writes (BS/SP) instead of one CR; this may slightly increase per-refresh byte count but avoids CR/LF interpretation issues on some terminals.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- Refresh still uses ANSI `ESC[K` to clear to end of line after redraw; terminals without ANSI erase support may still show stale characters.
