@@ -103,6 +103,7 @@ static uint8_t history_nav_active[TTY_N];
 static int8_t history_nav_index[TTY_N];
 static uint8_t history_nav_saved[TTY_N][CMD_BUF_LEN + 1];
 static uint16_t history_nav_saved_len[TTY_N];
+static uint16_t history_nav_saved_cursor[TTY_N];
 
 static void tty_rewind_and_clear_cmdline(tty_t *ttyp, int old_idx, int old_cursor)
 {
@@ -146,6 +147,22 @@ static void tty_set_cmdline(tty_t *ttyp, uint8_t const *line, int len)
     tty_refresh_cmdline(ttyp, old_idx, old_cursor);
 }
 
+static void tty_set_cmdline_with_cursor(tty_t *ttyp, uint8_t const *line, int len, int cursor)
+{
+    int old_idx = ttyp->cmd_idx;
+    int old_cursor = ttyp->cmd_cursor;
+
+    if (len < 0) len = 0;
+    if (len > CMD_BUF_LEN) len = CMD_BUF_LEN;
+    if (len > 0 && line) memcpy(ttyp->cmd_buf, line, len);
+    ttyp->cmd_idx = len;
+    if (cursor < 0) cursor = 0;
+    if (cursor > ttyp->cmd_idx) cursor = ttyp->cmd_idx;
+    ttyp->cmd_cursor = cursor;
+    ttyp->cmd_buf[len] = '\0';
+    tty_refresh_cmdline(ttyp, old_idx, old_cursor);
+}
+
 static void tty_move_cursor_left(tty_t *ttyp, int count)
 {
     while (count-- > 0) tty_write_char(ttyp, BS);
@@ -181,6 +198,7 @@ static void tty_history_reset_nav(tty_t *ttyp)
     history_nav_active[ttyp->num] = 0;
     history_nav_index[ttyp->num] = -1;
     history_nav_saved_len[ttyp->num] = 0;
+    history_nav_saved_cursor[ttyp->num] = 0;
 }
 
 static void tty_history_prev(tty_t *ttyp)
@@ -199,6 +217,7 @@ static void tty_history_prev(tty_t *ttyp)
         history_nav_active[tty_id] = 1;
         history_nav_index[tty_id] = cmd_history_head;
         history_nav_saved_len[tty_id] = ttyp->cmd_idx;
+        history_nav_saved_cursor[tty_id] = ttyp->cmd_cursor;
         memcpy(history_nav_saved[tty_id], ttyp->cmd_buf, ttyp->cmd_idx);
         history_nav_saved[tty_id][ttyp->cmd_idx] = '\0';
         just_started = 1;
@@ -238,8 +257,11 @@ static void tty_history_next(tty_t *ttyp)
 
     history_nav_index[tty_id] = (history_nav_index[tty_id] + 1) % CMD_HISTORY_SLOTS;
     if (history_nav_index[tty_id] == cmd_history_head) {
-        tty_set_cmdline(ttyp, history_nav_saved[tty_id], history_nav_saved_len[tty_id]);
-        history_nav_active[tty_id] = 0;
+        tty_set_cmdline_with_cursor(ttyp,
+                                    history_nav_saved[tty_id],
+                                    history_nav_saved_len[tty_id],
+                                    history_nav_saved_cursor[tty_id]);
+        tty_history_reset_nav(ttyp);
         return;
     }
 
