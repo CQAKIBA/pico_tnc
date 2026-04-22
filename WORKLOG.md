@@ -4,6 +4,52 @@ This file tracks implementation work, validation, and remaining risks.
 
 ## 2026-04-22
 
+
+### Summary
+履歴復帰時の後始末を統一するため、保存行へ戻った分岐で `history_nav_active` 直接更新をやめ、`tty_history_reset_nav()` を呼ぶように調整。
+
+### Files changed
+- `pico_tnc/tty.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `tty_history_next()` の保存行復帰分岐で `tty_history_reset_nav()` を使用し、`active/index/saved_len/saved_cursor` を一括で初期化。
+- 履歴ナビ復帰後に古い保存状態が残らないようにした（表示/操作仕様は従来どおり）。
+- RAM/queue impact note: 追加メモリなし、キュー変更なし。
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, firmware build cannot complete because Pico SDK path is not configured (`PICO_SDK_PATH` missing).
+
+### Remaining risks / TODO
+- 実機端末（USB/UART）で、履歴復帰後に連続して履歴操作した際の体感挙動を最終確認する必要あり。
+
+
+### Summary
+履歴ナビゲーションの保存状態にカーソル位置を追加し、履歴編集行へ戻る際にカーソル位置も復元するよう修正。
+
+### Files changed
+- `pico_tnc/tty.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `history_nav_saved_cursor[TTY_N]` を追加し、履歴ナビ開始時に `ttyp->cmd_cursor` を保存。
+- `tty_set_cmdline()` は従来どおり末尾カーソル配置のまま維持。
+- 新規 `tty_set_cmdline_with_cursor()` を追加し、履歴保存行へ戻るときのみ保存カーソルを復元。
+- 復元カーソルは `0..cmd_idx` にクランプして適用。
+- RAM/queue impact note: `uint16_t[TTY_N]` 追加分のみ固定RAMが微増。キューサイズ変更なし。
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, firmware build cannot complete because Pico SDK path is not configured (`PICO_SDK_PATH` missing).
+
+### Remaining risks / TODO
+- 実機端末（USB/UART）で、履歴復帰時のカーソル位置復元挙動を確認する必要あり。
+
 ### Summary
 Fixed full-history navigation regression: prevent `↑` wrap from oldest to newest, and allow `↓` from oldest to move toward newer entries when ring is full.
 
