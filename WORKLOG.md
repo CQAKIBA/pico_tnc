@@ -1279,3 +1279,27 @@ Change the `sign qsl` payload format from flat `{"QSL":"...","S":...}` to nested
 ### Remaining risks / TODOs
 - USB/TTY queue sizes were not changed.
 - Payload text for `sign qsl` is slightly longer due to the nested object wrapper (`"QSL":{"C":...}`), which may marginally increase output bytes per signed frame without changing any queue allocation.
+
+## 2026-04-24
+
+### Request
+Fix `sign qsl` option parsing so `-qth` stops at the next option token (space + `-`), and trim extra leading/trailing spaces around text fields.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- In `sign qsl` argument mode, `-qth` now consumes tokens only until the next `-option` token instead of always consuming the full remaining command tail.
+  - Example now supported as intended: `-qth Akihabara Tokyo -freq 433.123 -mode FM`
+- Added explicit trim for leading/trailing whitespace on parsed `-qth` text before validation/storage.
+- Updated English/Japanese command docs to mention that `-qth` ends at the next option.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- USB/TTY queue sizes were not changed.
+- `-qth` values that intentionally begin with `-` remain unsupported in argument mode because `-...` is treated as the next option token.

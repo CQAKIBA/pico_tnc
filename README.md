@@ -34,7 +34,7 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 - `privkey gen [m|p|mona1|p2pkh|p2sh|p2wpkh]` : generate Monacoin private key, display derived addresses, and allow `Space` respin (`Enter` accepts in RAM; use `perm` to persist into Flash)
 - `privkey set [m|p|mona1|p2pkh|p2sh|p2wpkh|WIF|RAW]` : set active address type only (`m/p/mona1/...`) or import/store private key (`WIF/RAW`); typed WIF updates active type, untyped WIF/RAW keeps current type
 - `sign msg <text>` : sign `{"msg":"<text>"}` and append base64 signature, then prepare AX.25 UI-frame TX with Enter/ESC confirmation
-- `sign qsl ...` : sign QSL JSON payload (`{"QSL":{"C","S","D","T","F","M","P"}}`) and prepare AX.25 UI-frame TX; supports argument form and no-arg wizard form
+- `sign qsl ...` : sign QSL JSON payload (`{"QSL":{"C","S","D","T","F","M","P"}}`) and prepare AX.25 UI-frame TX; supports argument form and no-arg wizard form (`-qth` stops at the next `-option`)
 - `system usb_bootloader` : guarded reboot to USB BOOTSEL mode (requires `Y`, `E`, `S`, `Enter` in order within 10 seconds)
 - `termtest` : raw terminal inspection mode; prints received bytes in hex/labels and exits on `Ctrl+C`
 

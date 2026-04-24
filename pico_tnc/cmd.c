@@ -1859,15 +1859,26 @@ static bool qsl_parse_args(char *args, qsl_data_t *out)
             continue;
         }
         if (!strcasecmp(tok[i], "-qth")) {
+            char *trim_p = NULL;
+            size_t qth_len = 0;
             int j = i + 1;
             if (j >= tok_n) return false;
             out->qth[0] = '\0';
-            while (j < tok_n) {
+            while (j < tok_n && tok[j][0] != '-') {
                 if ((strlen(out->qth) + strlen(tok[j]) + 2) >= sizeof(out->qth)) return false;
                 if (out->qth[0]) strncat(out->qth, " ", sizeof(out->qth) - strlen(out->qth) - 1);
                 strncat(out->qth, tok[j], sizeof(out->qth) - strlen(out->qth) - 1);
                 j++;
             }
+            trim_p = out->qth;
+            while (*trim_p && isspace((unsigned char)*trim_p)) trim_p++;
+            if (trim_p != out->qth) memmove(out->qth, trim_p, strlen(trim_p) + 1);
+            qth_len = strlen(out->qth);
+            while (qth_len > 0 && isspace((unsigned char)out->qth[qth_len - 1])) {
+                out->qth[qth_len - 1] = '\0';
+                qth_len--;
+            }
+            if (out->qth[0] == '\0') return false;
             i = j;
             continue;
         }
