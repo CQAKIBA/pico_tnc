@@ -1386,3 +1386,24 @@ Refactor the QSL card generator into a reusable subroutine and also show the sam
 
 ### Remaining risks / TODOs
 - JSON parsing remains lightweight and intentionally tuned for current compact `QSL` payload format.
+
+## 2026-04-25
+
+### Request
+On the receive-side QSL card output, change the status row from `Status   : OK` to `Status   : OK` plus a right-aligned `Confirming Our QSO.` message.
+
+### Files changed
+- `pico_tnc/qsl_card.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Updated QSL card renderer so that when `status` is `OK`, the status line includes:
+  - `Status   : OK` followed by spacing and `Confirming Our QSO.` near the right side of the 46-character content width.
+- Non-`OK` statuses (e.g., `Preview`) remain unchanged.
+- Queue size constants were not changed. This adds up to 19 characters on receive-side `OK` status lines, which may slightly increase USB/TTY queue occupancy during burst output without changing queue allocation.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- Right alignment is constrained by fixed 46-character card content width; if status text is expanded in the future, spacing before `Confirming Our QSO.` may shrink.

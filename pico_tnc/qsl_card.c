@@ -215,7 +215,15 @@ void qsl_card_render(tty_t *ttyp, const qsl_card_t *card, const char *from, cons
     card_write_line(ttyp, "Signed ID (Mona address)");
     card_write_line(ttyp, addr);
     tty_write_str(ttyp, "  +------------------------------------------------+\r\n");
-    snprintf(line, sizeof(line), "Status   : %s", status);
+    if (!strcmp(status, "OK")) {
+        static const char *suffix = "Confirming Our QSO.";
+        int left_n = snprintf(line, sizeof(line), "Status   : %s", status);
+        int pad_n = 46 - left_n - (int)strlen(suffix);
+        if (pad_n < 1) pad_n = 1;
+        snprintf(line, sizeof(line), "Status   : %s%*s%s", status, pad_n, "", suffix);
+    } else {
+        snprintf(line, sizeof(line), "Status   : %s", status);
+    }
     card_write_line(ttyp, line);
     tty_write_str(ttyp, "  +------------------------------------------------+\r\n");
     tty_write_str(ttyp, "\r\n");
