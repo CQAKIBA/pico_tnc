@@ -31,7 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pico/sync.h"
 #include "pico/util/queue.h"
 
-#define QUEUE_SIZE 1024
+#define QUEUE_SIZE 4096
 
 static queue_t usb_queue;
 
