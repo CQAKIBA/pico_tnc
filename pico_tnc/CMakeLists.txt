@@ -17,6 +17,7 @@ add_executable(pico_tnc
         send.c
         receive.c
         decode.c
+        qsl_card.c
         filter.c
         bell202.c
         ax25.c

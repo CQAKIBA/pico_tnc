@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unproto.h"
 #include "libmona_pico/mona_pico_api.h"
 #include "mona_backend_minimal.h"
+#include "qsl_card.h"
 
 #define CONVERSE_PORT 0
 
@@ -111,6 +112,7 @@ static mona_addr_type_t mona_param_to_addr_type(uint8_t t);
 static uint8_t mona_addr_type_to_param(mona_addr_type_t t);
 static char const *mona_param_type_name(uint8_t t);
 static bool sign_check_prerequisites(tty_t *ttyp, bool print_status, bool print_messages);
+static const char *sign_active_address(const mona_address_info_t *addrs);
 
 typedef struct {
     tty_t *ttyp;
@@ -1373,6 +1375,7 @@ static bool json_escape_message(const uint8_t *in, int in_len, char *out, int ou
 static bool sign_prepare_and_prompt_tx(tty_t *ttyp, const char *json_msg)
 {
     mona_keyslot_t slot;
+    mona_address_info_t addrs;
     mona_err_t err;
     uint64_t t0_us;
     uint64_t t1_us;
@@ -1380,6 +1383,10 @@ static bool sign_prepare_and_prompt_tx(tty_t *ttyp, const char *json_msg)
     int payload_len;
     char s[80];
     int frame_len;
+    qsl_card_t card;
+    uint8_t from_u8[16];
+    char from[16];
+    const char *addr_preview = "";
     if (!sign_check_prerequisites(ttyp, false, true)) return true;
 
     mona_backend_minimal_init();
@@ -1422,6 +1429,17 @@ static bool sign_prepare_and_prompt_tx(tty_t *ttyp, const char *json_msg)
         snprintf(s, sizeof(s), "%dbyte >= 256byte NG.\r\n", frame_len);
         tty_write_str(ttyp, s);
         return true;
+    }
+
+    if (qsl_card_parse(json_msg, &card) && card.has_qsl) {
+        memset(&addrs, 0, sizeof(addrs));
+        if (mona_keypair_from_secret(slot.secret, &addrs) == MONA_OK) {
+            addr_preview = sign_active_address(&addrs);
+        }
+        memset(from_u8, 0, sizeof(from_u8));
+        from_u8[callsign2ascii(from_u8, &param.mycall)] = '\0';
+        snprintf(from, sizeof(from), "%s", (char *)from_u8);
+        qsl_card_render(ttyp, &card, from, addr_preview, sig_b64, "Preview");
     }
 
     tty_write_str(ttyp, "Ready to send. Press [Enter] to TX or [ESC] to abort.\r\n");

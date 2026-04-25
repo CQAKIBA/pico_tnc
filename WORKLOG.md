@@ -1329,3 +1329,60 @@ On packet receive, detect whether the packet information field starts with JSON;
 ### Remaining risks / TODOs
 - USB/TTY queue sizes were not changed.
 - Added receive-path status/error lines increase text output volume per signed JSON frame, which may increase queue occupancy during burst receive traffic without changing queue allocation.
+
+## 2026-04-25
+
+### Request
+When receiving JSON that contains `"QSL":{}`, keep current logs and then print an indented card-style framed log after successful address recovery.
+
+### Files changed
+- `pico_tnc/decode.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Kept existing receive logs (`Digital signature calculation...`, `Signature address:...`) unchanged.
+- Added an extra blank line and an indented (`2` spaces) framed `Digitally Signed QSL Card` block after successful signature address recovery when the signed JSON includes a top-level `QSL` object.
+- Card fields are populated as follows:
+  - `From` from AX.25 source address.
+  - `To Call/Report/Date/Time/Freq/Mode/QTH` from `QSL` keys `C/S/D/T/F/M/P`.
+  - `Extended entries` from unknown keys present in `QSL`.
+  - `Signature` wrapped at 45 characters into two lines.
+  - `Signed ID (Mona address)` from recovered address.
+  - `Status   : OK`.
+- No queue size constants were changed. Added receive-path output bytes for qualifying packets may increase USB/TTY queue occupancy during bursts.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- QSL card parser is intentionally lightweight and expects the standard compact `QSL` object format used by current `sign qsl` output.
+
+## 2026-04-25
+
+### Request
+Refactor the QSL card generator into a reusable subroutine and also show the same card as a send-side preview immediately before `Ready to send.` with status `Preview`.
+
+### Files changed
+- `pico_tnc/qsl_card.h`
+- `pico_tnc/qsl_card.c`
+- `pico_tnc/decode.c`
+- `pico_tnc/cmd.c`
+- `pico_tnc/CMakeLists.txt`
+- `WORKLOG.md`
+
+### Behavior changes
+- Extracted QSL card parse/render logic into reusable module:
+  - `qsl_card_parse(...)`
+  - `qsl_card_render(...)`
+- Receive path now reuses the shared renderer and keeps status frame as `OK`.
+- Send path (`sign` flow) now detects signed JSON containing top-level `QSL` and prints the same indented framed card just before `Ready to send...`.
+  - `From` in preview uses current `MYCALL`.
+  - Signed ID uses current active Monacoin address.
+  - Status frame in preview is `Preview`.
+- Queue size constants were not changed; additional send-side preview text may increase USB/TTY queue occupancy during burst command output.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- JSON parsing remains lightweight and intentionally tuned for current compact `QSL` payload format.

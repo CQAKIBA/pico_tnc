@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kiss.h"
 #include "mona_backend_minimal.h"
 #include "libmona_pico/mona_compat.h"
+#include "qsl_card.h"
 
 #define FCS_OK 0x0f47
 //#define FCS_OK (0x0f47 ^ 0xffff)
@@ -103,6 +104,24 @@ static bool json_object_end(const uint8_t *buf, int len, int *json_end)
     return false;
 }
 
+static int ax25_addr_to_ascii(const uint8_t *addr, char *out, int out_sz)
+{
+    int n = 0;
+    int i;
+
+    if (!addr || !out || out_sz <= 0) return 0;
+    for (i = 0; i < 6 && n < out_sz - 1; i++) {
+        int d = addr[i] >> 1;
+        if (d == ' ') continue;
+        if ((d >= '0' && d <= '9') || (d >= 'A' && d <= 'Z')) out[n++] = (char)d;
+    }
+    if (((addr[6] >> 1) & 0x0f) && n < out_sz - 1) {
+        n += snprintf(out + n, out_sz - n, "-%d", (addr[6] >> 1) & 0x0f);
+    }
+    out[n] = '\0';
+    return n;
+}
+
 static void display_signature_recovery(tty_t *ttyp, tnc_t *tp)
 {
     int info_off;
@@ -116,6 +135,8 @@ static void display_signature_recovery(tty_t *ttyp, tnc_t *tp)
     uint64_t t0_us;
     uint64_t t1_us;
     const char *addr;
+    qsl_card_t card;
+    char from[16];
 
     info_off = ax25_info_offset(tp->data, tp->data_cnt);
     if (info_off < 0 || info_off >= tp->data_cnt - 2) return;
@@ -155,6 +176,11 @@ static void display_signature_recovery(tty_t *ttyp, tnc_t *tp)
     tty_write_str(ttyp, "Signature address:");
     tty_write_str(ttyp, addr);
     tty_write_str(ttyp, "\r\n");
+
+    if (qsl_card_parse(json_msg, &card) && card.has_qsl) {
+        ax25_addr_to_ascii(tp->data + 7, from, sizeof(from));
+        qsl_card_render(ttyp, &card, from, addr, sig_b64, "OK");
+    }
 }
 
 static void display_packet(tty_t *ttyp, tnc_t *tp)
