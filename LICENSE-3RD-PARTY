@@ -1,0 +1,134 @@
+LICENSE-3RD-PARTY
+===================
+
+This repository contains upstream and third-party code and references in
+addition to newly added original code by Daisuke JA1UMW / CQAKIBA.TOKYO.
+
+Please check individual file headers and upstream directories as well.
+If an upstream component ships its own LICENSE file, keep that upstream file
+together with the source tree.
+
+Summary
+-------
+
+1. PICO-TNC
+   Original project: PICO-TNC
+   Original author: Kazuhisa Yokota, JN1DFF
+   License: BSD-3-Clause
+   Notes:
+   - This project is based on PICO-TNC.
+   - Original upstream notices should be preserved in upstream-derived files.
+
+2. libsecp256k1
+   Original project: bitcoin-core/secp256k1
+   License: MIT
+   Notes:
+   - Used for secp256k1 elliptic-curve operations when vendored/integrated.
+   - Keep the upstream LICENSE and notices from the vendored source tree.
+
+3. Electrum Mona
+   Original project: wakiyamap/electrum-mona
+   License: MIT
+   Notes:
+   - Used as compatibility / behavior reference material unless otherwise noted.
+
+4. Other upstream or third-party files
+   Notes:
+   - Follow the license stated in each upstream file or bundled upstream
+     license document.
+
+----------------------------------------------------------------------
+PICO-TNC upstream BSD-3-Clause license text
+----------------------------------------------------------------------
+
+Copyright (c) 2021, Kazuhisa Yokota, JN1DFF
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its contributors
+  may be used to endorse or promote products derived from this software
+  without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------
+Note on MIT-licensed upstream components
+----------------------------------------------------------------------
+
+For MIT-licensed upstream components such as libsecp256k1 and Electrum Mona,
+the recommended practice is to keep the original upstream LICENSE text and
+copyright notices together with the vendored or referenced source tree.
+
+This file provides a repository-level summary, but does not replace the
+upstream LICENSE files bundled with those components.
+
+----------------------------------------------------------------------
+参考 / Reference (Japanese summary)
+----------------------------------------------------------------------
+
+このファイルの上側は、第三者コードや元になったコードについての
+ライセンス整理です。
+以下の日本語は、内容を理解しやすくするための参考説明です。
+法的な判断が必要な場合は、必ず上側の英語本文や各 upstream の正式な
+LICENSE を基準にしてください。
+
+このリポジトリには、Daisuke JA1UMW / CQAKIBA.TOKYO が新しく追加した
+コードだけでなく、元になったコードや、参照・同梱している第三者コードが
+含まれています。
+そのため、「全部まとめて1種類のライセンスです」とは言えません。
+
+大まかには、次のように分かれます。
+
+1. PICO-TNC
+   このプロジェクトの元になったファームウェアです。
+   BSD-3-Clause 系のライセンスです。
+   元の著作権表示やライセンス表示は残す必要があります。
+
+2. libsecp256k1
+   Bitcoin Core 系の secp256k1 ライブラリです。
+   MIT License 系です。
+   このコードを同梱する場合は、元の LICENSE や著作権表示も一緒に
+   残してください。
+
+3. Electrum Mona
+   Monacoin 互換の挙動確認や参考資料として参照しているものです。
+   こちらも MIT License 系です。
+
+4. その他の upstream / third-party コード
+   それぞれのファイルや同梱 LICENSE に書かれた条件に従ってください。
+
+このファイルに書いてあることを簡単に言うと、
+
+- 元の PICO-TNC の権利表示は残す必要があります
+- 取り込んだ第三者ライブラリの LICENSE も残す必要があります
+- 自分で新しく書いた部分は別途 MIT で整理する
+- どのコードが誰のものか、あとで追えるようにしておく
+
+という方針です。
+
+また、このファイルの下に載せている BSD-3-Clause の本文は、
+PICO-TNC 由来部分のライセンスを追いやすくするためのものです。
+
+MIT 系の upstream については、ここでは概要だけを書いています。
+実際には、各 upstream ソースツリーの LICENSE も一緒に保持するのが
+望ましいです。
+
