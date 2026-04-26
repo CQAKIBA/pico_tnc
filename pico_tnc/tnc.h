@@ -3,6 +3,12 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
+/*
+Modifications:
+Copyright (c) 2026 Daisuke JA1UMW / CQAKIBA.TOKYO
+Released under the MIT License.
+See LICENSE and LICENSE-3RD-PARTY for details.
+*/
 
 #pragma once
 #include "pico/util/queue.h"

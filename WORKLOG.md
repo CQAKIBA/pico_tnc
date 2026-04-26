@@ -1407,3 +1407,58 @@ On the receive-side QSL card output, change the status row from `Status   : OK` 
 
 ### Remaining risks / TODOs
 - Right alignment is constrained by fixed 46-character card content width; if status text is expanded in the future, spacing before `Confirming Our QSO.` may shrink.
+
+## 2026-04-26
+
+### Request
+Update source file headers to match repository license structure for files touched in this task.
+
+### Files changed
+- `pico_tnc/libmona_pico/mona_compat.c`
+- `pico_tnc/libmona_pico/mona_compat.h`
+- `pico_tnc/libmona_pico/mona_pico_api.c`
+- `pico_tnc/libmona_pico/mona_pico_api.h`
+- `pico_tnc/mona_backend_minimal.c`
+- `pico_tnc/mona_backend_minimal.h`
+- `pico_tnc/libmona_pico/tools/mona_backend_openssl.c`
+- `pico_tnc/libmona_pico/tools/mona_backend_openssl.h`
+- `pico_tnc/libmona_pico/tools/mona_cli.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- No firmware runtime behavior changes.
+- Added concise English MIT header notices at the top of touched source files.
+- No USB/TTY queue sizes or output paths were changed.
+
+### Validation status
+- Header-only change; full firmware build not run in this task.
+
+### Remaining risks / TODOs
+- Files that already carry third-party upstream headers were not altered in this task.
+
+## 2026-04-26
+
+### Request
+Update headers for upstream-derived source files modified in this project by appending the required Modifications notice below existing upstream headers.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/cmd.h`
+- `pico_tnc/decode.c`
+- `pico_tnc/main.c`
+- `pico_tnc/tnc.h`
+- `pico_tnc/tty.c`
+- `pico_tnc/tty.h`
+- `pico_tnc/usb_output.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- No runtime behavior changes.
+- Preserved original upstream BSD header blocks and appended a short English Modifications notice directly below each.
+- No USB/TTY queue sizes or output path logic were changed.
+
+### Validation status
+- Header-only change; full firmware build not run in this task.
+
+### Remaining risks / TODOs
+- Additional upstream-derived files may still need similar notice updates if they are modified in future tasks.

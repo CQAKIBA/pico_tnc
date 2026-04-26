@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Daisuke JA1UMW / CQAKIBA.TOKYO
+ * Released under the MIT License.
+ * See LICENSE for details.
+ */
+
 #ifndef MONA_COMPAT_H
 #define MONA_COMPAT_H
 
