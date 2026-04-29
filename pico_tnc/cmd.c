@@ -705,6 +705,7 @@ static bool cmd_unproto(tty_t *ttyp, uint8_t *buf, int len)
 
             if (toupper(*p) != 'V') return false;
             p++;
+            if (toupper(*p) == 'I' && toupper(*(p + 1)) == 'A') p += 2;
             if (*p != ' ') return false;
 
             while (*p == ' ') p++;
