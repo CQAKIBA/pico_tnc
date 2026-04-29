@@ -1770,3 +1770,26 @@ Review and fix three regressions in MON/DIGI migration and digipeat success repo
 ### Remaining risks / TODOs
 - Legacy MON migration currently uses `digi<=1` as a compatibility heuristic because no explicit persisted schema/version marker exists in flash settings.
 - On devices already reconfigured with new enum values while staying in `digi<=1`, this heuristic could still remap `mon=0` or `mon=2`; adding an explicit settings version field would make migration deterministic.
+
+## 2026-04-29
+
+### Request
+Remove legacy MON/DIGI persisted-value migration logic because there are no deployed devices requiring migration. Keep only enum-range validation at boot.
+
+### Files changed
+- `pico_tnc/tnc.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Removed boot-time legacy MON migration heuristic (`param.digi <= 1` based remap).
+- Boot now performs only simple validation for persisted enums:
+  - `param.digi` out of range -> `DIGI_OFF`
+  - `param.mon` out of range -> `MON_OFF`
+- No initialization-time remap is performed for valid `DIGI_ALIAS` or `MON_OFF` values.
+- `DIGI ON` compatibility remains command-input-only behavior (handled in command parser as alias to internal `DIGI_BOTH`).
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- None specific to this change; migration heuristics were intentionally removed per current deployment status.
