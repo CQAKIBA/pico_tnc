@@ -1713,3 +1713,37 @@ In `cmd_sign()` MSG path, check `snprintf` return value and abort safely when JS
 
 ### Remaining risks / TODOs
 - None newly introduced beyond existing SDK build-environment limitation.
+
+## 2026-04-29
+
+### Request
+Extend MON/DIGI behavior: add `MON WE`, split DIGI targets (`OFF/ALIAS/MYCALL/BOTH`), make `digipeat()` return whether this TNC repeated the frame, and keep `DIGI ON` as compatibility input alias of `DIGI BOTH`.
+
+### Files changed
+- `pico_tnc/tnc.h`
+- `pico_tnc/tnc.c`
+- `pico_tnc/digipeat.h`
+- `pico_tnc/digipeat.c`
+- `pico_tnc/decode.c`
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- Added monitor mode `MON_WE` (`OFF/ME/WE/ALL`) and kept existing `MON_ME` behavior unchanged.
+- `output_packet()` now records `digipeated_by_me` from `digipeat()` and uses it in `MON_WE` display conditions.
+- Changed `digipeat()` signature from `void` to `bool`; it now returns `true` only when a repeat TX is actually queued, while preserving temporary H-bit set/clear behavior.
+- Added DIGI modes `DIGI_OFF/DIGI_ALIAS/DIGI_MYCALL/DIGI_BOTH` and mode-based repeat matching against next unused digi path entry.
+- `MYALIAS` matching is guarded by `param.myalias.call[0]` to avoid unintended match when alias is unset.
+- Command parser/output now supports `digi off|alias|mycall|both` and accepts `digi on` as compatibility input mapped to internal/output `BOTH`.
+- Added flash-load normalization for legacy settings: old `digi==1` is converted to `DIGI_BOTH`; invalid MON/DIGI values are clamped.
+- Updated EN/JP help text and README command docs for the new MON/DIGI options.
+- Text-output path change note: this only changes packet visibility conditions and command/help strings; queue constants and packet queue depth are unchanged.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- Runtime on-device verification is still needed for operational edge cases (e.g., `MON_WE` visibility under mixed digi paths and all DIGI mode combinations).

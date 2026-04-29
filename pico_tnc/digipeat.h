@@ -28,4 +28,4 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 #include "tnc.h"
 
-void digipeat(tnc_t *tp);
+bool digipeat(tnc_t *tp);

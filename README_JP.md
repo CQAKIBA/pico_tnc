@@ -71,8 +71,9 @@ pico_tnc.uf2
 |ABOUT|about|バージョン情報とサードパーティコンポーネント情報の表示|
 |BTEXT|btext this is beacon|ビーコンで送信するテキストの設定，最大100バイト|
 |BEACON|beacon every n|ビーコンの送信間隔を分で指定，n=0でオフ，設定範囲は1～59分|
-|MONitor|mon all, mon me, mon off|モニターするするパケットの指定，all 全て，me 自局宛のみ，off モニターしない|
+|MONitor|mon off, mon me, mon we, mon all|モニターするパケットの指定，off 非表示，me MYCALL宛のみ，we MYCALL/MYALIAS宛または自局中継分，all 全表示|
 |MYALIAS|myalias RELAY|エイリアスの指定，指定されたコールサインでデジピーターとして動作する|
+|DIGIpeat|digi off, digi alias, digi mycall, digi both (`digi on`互換)|デジピータ動作を指定，`on`入力は互換として`both`へ正規化|
 |PERM|perm|設定を不揮発性メモリに保存する|
 |DISP|disp|設定値の表示|
 |ECHO|echo on, echo off|シリアル入力のエコーバックの設定，on 表示する，off 表示しない|

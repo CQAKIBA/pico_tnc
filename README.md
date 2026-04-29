@@ -37,6 +37,8 @@ This TNC has same functionality as WB8WGA's PIC TNC.
 - `txdelay n|nms|ns` : TX delay (`0..1000ms`, unitless `n` keeps legacy `10ms` units)
 - `axdelay n|nms|ns` : AX.25 preamble delay (`0..1000ms`, unitless `n` keeps legacy `10ms` units)
 - `axhang n|nms|ns` : hold PTT after frame end (`0..1000ms`, unitless `n` keeps legacy `10ms` units)
+- `monitor off|me|we|all` : packet monitor filter (`we` = MYCALL/MYALIAS addressed or digipeated-by-me frames)
+- `digipeat off|alias|mycall|both` : digipeater target filter (`on` is accepted as compatibility alias of `both`)
 - `about` : version information and third-party component references
 - `privkey show` : display persisted key material after interactive security confirmation
 - `privkey gen [m|p|mona1|p2pkh|p2sh|p2wpkh]` : generate Monacoin private key, display derived addresses, and allow `Space` respin (`Enter` accepts in RAM; use `perm` to persist into Flash)
