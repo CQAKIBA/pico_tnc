@@ -811,6 +811,8 @@ static bool cmd_monitor(tty_t *ttyp, uint8_t *buf, int len)
 
         if (!strncasecmp(buf, "ALL", 3)) {
             param.mon = MON_ALL;
+        } else if (!strncasecmp(buf, "WE", 2)) {
+            param.mon = MON_WE;
         } else if (!strncasecmp(buf, "ME", 2)) {
             param.mon = MON_ME;
         } else if (!strncasecmp(buf, "OFF", 3)) {
@@ -824,6 +826,8 @@ static bool cmd_monitor(tty_t *ttyp, uint8_t *buf, int len)
         tty_write_str(ttyp, "MONitor ");
         if (param.mon == MON_ALL) {
             tty_write_str(ttyp, "ALL");
+        } else if (param.mon == MON_WE) {
+            tty_write_str(ttyp, "WE");
         } else if (param.mon == MON_ME) {
             tty_write_str(ttyp, "ME");
         } else {
@@ -840,10 +844,14 @@ static bool cmd_digipeat(tty_t *ttyp, uint8_t *buf, int len)
 {
     if (buf && buf[0]) {
 
-        if (!strncasecmp(buf, "ON", 2)) {
-            param.digi = true;
+        if (!strncasecmp(buf, "ON", 2) || !strncasecmp(buf, "BOTH", 4)) {
+            param.digi = DIGI_BOTH;
+        } else if (!strncasecmp(buf, "MYCALL", 6)) {
+            param.digi = DIGI_MYCALL;
+        } else if (!strncasecmp(buf, "ALIAS", 5)) {
+            param.digi = DIGI_ALIAS;
         } else if (!strncasecmp(buf, "OFF", 3)) {
-            param.digi = false;
+            param.digi = DIGI_OFF;
         } else {
             return false;
         }
@@ -851,10 +859,19 @@ static bool cmd_digipeat(tty_t *ttyp, uint8_t *buf, int len)
     } else {
 
         tty_write_str(ttyp, "DIGIpeater ");
-        if (param.digi) {
-            tty_write_str(ttyp, "ON");
-        } else {
-            tty_write_str(ttyp, "OFF");
+        switch (param.digi) {
+            case DIGI_ALIAS:
+                tty_write_str(ttyp, "ALIAS");
+                break;
+            case DIGI_MYCALL:
+                tty_write_str(ttyp, "MYCALL");
+                break;
+            case DIGI_BOTH:
+                tty_write_str(ttyp, "BOTH");
+                break;
+            default:
+                tty_write_str(ttyp, "OFF");
+                break;
         }
         tty_write_str(ttyp, "\r\n");
     }

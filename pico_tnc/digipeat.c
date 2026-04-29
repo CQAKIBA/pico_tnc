@@ -40,18 +40,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static const uint8_t con_pid_ui[2] = { 0x03, 0xf0, };
 
-void digipeat(tnc_t *tp)
+bool digipeat(tnc_t *tp)
 {
     uint8_t *packet = tp->data;
     int len = tp->data_cnt;
 
-    if (len < AX25_MIN_LEN) return; // too short
+    if (len < AX25_MIN_LEN) return false; // too short
 
-    if (!ax25_ui(packet, len)) return; // not UI packet
+    if (!ax25_ui(packet, len)) return false; // not UI packet
 
     int offset = AX25_ADDR_LEN; // src addr
 
-    if (packet[offset + SSID_LOC] & 1) return; // no repeaters
+    if (packet[offset + SSID_LOC] & 1) return false; // no repeaters
 
     offset += AX25_ADDR_LEN; // 1st digipeater addr
 
@@ -61,19 +61,42 @@ void digipeat(tnc_t *tp)
 
         if (!(packet[offset + SSID_LOC] & H_BIT)) { // has not been digipeated yet
 
-            if (ax25_callcmp(&param.mycall, &packet[offset])
-                || ax25_callcmp(&param.myalias, &packet[offset])) { // addr matched
+            bool match_mycall = ax25_callcmp(&param.mycall, &packet[offset]);
+            bool match_alias = false;
+            if (param.myalias.call[0]) {
+                match_alias = ax25_callcmp(&param.myalias, &packet[offset]);
+            }
+
+            bool digi_ok = false;
+            switch (param.digi) {
+                case DIGI_ALIAS:
+                    digi_ok = match_alias;
+                    break;
+                case DIGI_MYCALL:
+                    digi_ok = match_mycall;
+                    break;
+                case DIGI_BOTH:
+                    digi_ok = (match_mycall || match_alias);
+                    break;
+                default:
+                    break;
+            }
+
+            if (digi_ok) { // addr matched
 
                 packet[offset + SSID_LOC] |= H_BIT;  // set H bit
                 send_packet(tp, packet, len - 2);    // delete FCS
                 packet[offset + SSID_LOC] &= ~H_BIT; // clear H bit
+                return true;
             }
 
             break;
         }
 
-        if (++digis >= MAX_DIGIPEATER) return;
+        if (++digis >= MAX_DIGIPEATER) return false;
 
         offset += AX25_ADDR_LEN; // next digipeater addr
     }
+
+    return false;
 }

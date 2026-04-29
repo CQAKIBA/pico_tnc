@@ -284,8 +284,10 @@ static void output_packet(tnc_t *tp)
     // count received packet
     ++tp->pkt_cnt;
 
-    // digipeat
-    if (param.digi) digipeat(tp);
+    bool digipeated_by_me = false;
+    if (param.digi != DIGI_OFF) {
+        digipeated_by_me = digipeat(tp);
+    }
 
     for (int i = TTY_USB; i <= TTY_UART0; i++) {
         tty_t *ttyp = &tty[i];
@@ -305,6 +307,20 @@ static void output_packet(tnc_t *tp)
                         display_packet(ttyp, tp);
                         display_signature_recovery(ttyp, tp);
                     }
+                    break;
+
+                case MON_WE:
+                    if (ax25_callcmp(&param.mycall, &data[0])
+                        || (param.myalias.call[0] && ax25_callcmp(&param.myalias, &data[0]))
+                        || digipeated_by_me) {
+                        display_packet(ttyp, tp);
+                        display_signature_recovery(ttyp, tp);
+                    }
+                    break;
+
+                case MON_OFF:
+                default:
+                    break;
             }
         }
     }

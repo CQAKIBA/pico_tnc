@@ -184,9 +184,17 @@ inline uint32_t tnc_time(void)
 
 // TNC command
 enum MONITOR {
-    MON_ALL = 0,
+    MON_OFF = 0,
     MON_ME,
-    MON_OFF,
+    MON_WE,
+    MON_ALL,
+};
+
+enum DIGIPEATER {
+    DIGI_OFF = 0,
+    DIGI_ALIAS,
+    DIGI_MYCALL,
+    DIGI_BOTH,
 };
 
 // GPS
