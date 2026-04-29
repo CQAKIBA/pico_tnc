@@ -66,7 +66,7 @@ pico_tnc.uf2
 |---|:---:|---|
 |HELP|help, help ja sjis, help ja utf8|ヘルプ表示．`help`は英語，`help ja sjis`/`help ja`はSJIS日本語，`help ja utf8`はUTF-8日本語．`MYCALL`または`UNPROTO`が未設定の場合は設定警告を表示|
 |MYCALL|mycall jn1dff-2|コールサインの設定|
-|UNPROTO|unproto jn1dff-1 v jn1dff-1|送信先，デジピーターの指定，デジピーターは3つまで|
+|UNPROTO|unproto jn1dff-1 v(via) jn1dff-1|送信先，デジピーターの指定，デジピーターは3つまで|
 |CON|con|コンバースモードへ移行，CRで入力した文字列がUIフレームとしてUNPROTOの設定先に送信される，Ctrl-Cで終了|
 |ABOUT|about|バージョン情報とサードパーティコンポーネント情報の表示|
 |BTEXT|btext this is beacon|ビーコンで送信するテキストの設定，最大100バイト|

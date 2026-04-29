@@ -1793,3 +1793,28 @@ Remove legacy MON/DIGI persisted-value migration logic because there are no depl
 
 ### Remaining risks / TODOs
 - None specific to this change; migration heuristics were intentionally removed per current deployment status.
+
+## 2026-04-29
+
+### Request
+Allow `UNPROTO` digi path separator to accept both `v` and `via` to reduce operator confusion with common AX.25 documentation.
+
+### Files changed
+- `pico_tnc/cmd.c`
+- `pico_tnc/help.c`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- `UNPROTO` parser now accepts both forms below between destination and each digipeater:
+  - `v`
+  - `via`
+- Existing `v` behavior remains unchanged; output formatting remains uppercase `V` in displayed settings.
+- Help examples and Japanese command reference were updated to show `v(via)`.
+- Queue/RAM note: this parser/text-only update does not change queue sizes, packet buffers, or output queue behavior.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- None specific; `via` acceptance intentionally requires the same spacing rules as existing `v` parsing.
