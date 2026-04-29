@@ -148,15 +148,12 @@ void tnc_init(void)
         param.mona_active_type = MONA_ACTIVE_P2PKH;
     }
 
-    if (param.mon > MON_ALL) {
-        param.mon = MON_ALL;
-    }
-
     if (param.digi > DIGI_BOTH) {
         param.digi = DIGI_OFF;
-    } else if (param.digi == 1) {
-        // compatibility with old bool-like DIGI ON setting
-        param.digi = DIGI_BOTH;
+    }
+
+    if (param.mon > MON_ALL) {
+        param.mon = MON_OFF;
     }
 
     // set kiss txdelay
