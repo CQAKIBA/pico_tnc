@@ -1747,3 +1747,26 @@ Extend MON/DIGI behavior: add `MON WE`, split DIGI targets (`OFF/ALIAS/MYCALL/BO
 
 ### Remaining risks / TODOs
 - Runtime on-device verification is still needed for operational edge cases (e.g., `MON_WE` visibility under mixed digi paths and all DIGI mode combinations).
+
+## 2026-04-29
+
+### Request
+Review and fix three regressions in MON/DIGI migration and digipeat success reporting: avoid unconditional `DIGI_ALIAS(1)` remap to `DIGI_BOTH`, migrate legacy MON enum values after reordering, and make `digipeat()` return success only when repeat frame enqueue succeeds.
+
+### Files changed
+- `pico_tnc/tnc.c`
+- `pico_tnc/digipeat.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- Removed unconditional `digi==1 -> DIGI_BOTH` conversion at init so persisted `DIGI_ALIAS` is no longer rewritten on reboot.
+- Added legacy MON migration path during init for legacy-layout states (`digi<=1`): old `MON_ALL(0)` remaps to new `MON_ALL(3)`, old `MON_OFF(2)` remaps to new `MON_OFF(0)`.
+- `digipeat()` now returns the result of `send_packet()` after address/H-bit processing, so monitor-side `digipeated_by_me` only becomes true when queueing actually succeeds.
+- Queue/RAM note: no queue sizes or buffer constants changed; only return-value and init migration logic were adjusted.
+
+### Validation status
+- Build attempted with `cmake -S . -B build && cmake --build build -j4`; build is not possible in this environment because `PICO_SDK_PATH` (or `PICO_SDK_FETCH_FROM_GIT`) is not configured.
+
+### Remaining risks / TODOs
+- Legacy MON migration currently uses `digi<=1` as a compatibility heuristic because no explicit persisted schema/version marker exists in flash settings.
+- On devices already reconfigured with new enum values while staying in `digi<=1`, this heuristic could still remap `mon=0` or `mon=2`; adding an explicit settings version field would make migration deterministic.

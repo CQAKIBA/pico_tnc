@@ -85,9 +85,9 @@ bool digipeat(tnc_t *tp)
             if (digi_ok) { // addr matched
 
                 packet[offset + SSID_LOC] |= H_BIT;  // set H bit
-                send_packet(tp, packet, len - 2);    // delete FCS
+                bool queued = send_packet(tp, packet, len - 2); // delete FCS
                 packet[offset + SSID_LOC] &= ~H_BIT; // clear H bit
-                return true;
+                return queued;
             }
 
             break;

@@ -148,15 +148,20 @@ void tnc_init(void)
         param.mona_active_type = MONA_ACTIVE_P2PKH;
     }
 
-    if (param.mon > MON_ALL) {
-        param.mon = MON_ALL;
-    }
-
     if (param.digi > DIGI_BOTH) {
         param.digi = DIGI_OFF;
-    } else if (param.digi == 1) {
-        // compatibility with old bool-like DIGI ON setting
-        param.digi = DIGI_BOTH;
+    }
+
+    if (param.mon > MON_ALL) {
+        param.mon = MON_ALL;
+    } else if (param.digi <= 1) {
+        // legacy monitor enum migration:
+        // old MON_ALL(0)/MON_ME(1)/MON_OFF(2) -> new OFF(0)/ME(1)/WE(2)/ALL(3)
+        if (param.mon == 0) {
+            param.mon = MON_ALL;
+        } else if (param.mon == 2) {
+            param.mon = MON_OFF;
+        }
     }
 
     // set kiss txdelay
