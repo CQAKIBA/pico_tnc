@@ -1873,3 +1873,23 @@ GPS UART の baud 設定手動化、AUTO 自動探索、`gps diag` 診断、`gps
 
 ### Remaining risks / TODO
 - なし。
+
+## 2026-05-03
+
+### Summary
+`gps diag` 終了条件を開始元TTY経路に接続し、USBだけでなくUARTコンソールでも Ctrl+C で終了できるよう修正。
+
+### Files changed
+- `pico_tnc/gps.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `gps diag` の終了判定を `tud_cdc_*` 固定から `tty_t.tty_serial` ベースに変更。
+- USB起動時はUSB CDC入力、UART起動時はUART0入力の `0x03` を監視して終了。
+- RAM/queue impact note: 追加は小さな分岐関数のみで、固定バッファ/キューサイズ変更なし。
+
+### Validation status
+- Manual code-path inspection only (environment build limitation remains).
+
+### Remaining risks / TODO
+- UART経路でのCtrl+C終端は実機端末種別ごとの差分（CR/LF送出やローカルエコー設定）を最終確認する。

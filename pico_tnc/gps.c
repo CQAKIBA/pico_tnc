@@ -92,6 +92,22 @@ static bool gps_valid_baud(uint32_t baud) {
 static void gps_apply_baud(uint32_t baud){ uart_set_baudrate(uart1, baud); gps_rt.active_baud = baud; }
 static void gps_power_on(void){}
 static void gps_power_off(void){}
+static bool gps_diag_exit_requested(tty_t *ttyp)
+{
+    if (!ttyp) return false;
+
+    if (ttyp->tty_serial == TTY_USB) {
+        if (!tud_cdc_available()) return false;
+        return tud_cdc_read_char() == 0x03;
+    }
+
+    if (ttyp->tty_serial == TTY_UART0) {
+        if (!uart_is_readable(uart0)) return false;
+        return uart_getc(uart0) == 0x03;
+    }
+
+    return false;
+}
 
 void gps_init_runtime(void){
     if (!gps_valid_baud(param.gps_baud)) param.gps_baud = 0;
@@ -173,10 +189,7 @@ bool gps_diag(tty_t *ttyp){
     tty_write_str(ttyp, "GPS NMEA Diagnosis\r\nPress CTRL+C to exit.\r\n");
     uint8_t line[GPS_LEN + 1]; int idx = 0; bool warned = false;
     while (1) {
-        if (tud_cdc_available()) {
-            int c = tud_cdc_read_char();
-            if (c == 0x03) break;
-        }
+        if (gps_diag_exit_requested(ttyp)) break;
         if (gps_rt.baud_setting == 0) {
             for (size_t i=0;i<sizeof(gps_baud_candidates)/sizeof(gps_baud_candidates[0]);i++) {
                 uint32_t b = (i==0 && gps_rt.last_good_baud)?gps_rt.last_good_baud:gps_baud_candidates[i];
@@ -184,7 +197,7 @@ bool gps_diag(tty_t *ttyp){
                 gps_apply_baud(b);
                 absolute_time_t end = make_timeout_time_ms(GPS_DIAG_SCAN_TICKS*10);
                 while (!time_reached(end)) {
-                    if (tud_cdc_available() && tud_cdc_read_char()==0x03) goto done;
+                    if (gps_diag_exit_requested(ttyp)) goto done;
                     while (uart_is_readable(uart1)) {
                         int ch = uart_getc(uart1);
                         if (ch == '$') idx = 0;
@@ -198,7 +211,7 @@ bool gps_diag(tty_t *ttyp){
             uint32_t b = gps_rt.baud_setting; char tmp[16]; snprintf(tmp,sizeof(tmp),"%lu",(unsigned long)b);
             tty_write_str(ttyp,"GPS: baud="); tty_write_str(ttyp,tmp); tty_write_str(ttyp,"\r\nGPS: listening...\r\n"); gps_apply_baud(b);
             while (1) {
-                if (tud_cdc_available() && tud_cdc_read_char()==0x03) goto done;
+                if (gps_diag_exit_requested(ttyp)) goto done;
                 while (uart_is_readable(uart1)) { int ch = uart_getc(uart1); if (ch=='$') idx=0; if (idx<GPS_LEN) line[idx++]=(uint8_t)ch; if (ch=='\n'){ tty_write(ttyp,line,idx); idx=0; } }
             }
         }
