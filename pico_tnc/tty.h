@@ -42,4 +42,5 @@ void tty_input(tty_t *ttyp, int ch);
 void tty_write(tty_t *ttyp, uint8_t const *data, int len);
 void tty_write_char(tty_t *ttyp, uint8_t ch);
 void tty_write_str(tty_t *ttyp, uint8_t const *str);
+bool tty_read_char_nonblocking(tty_t *ttyp, uint8_t *ch);
 void tty_history_push(uint8_t const *line, int len);

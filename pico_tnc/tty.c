@@ -40,6 +40,7 @@ See LICENSE and LICENSE-3RD-PARTY for details.
 #include "hardware/uart.h"
 
 #include "tnc.h"
+#include "tty.h"
 #include "cmd.h"
 #include "usb_output.h"
 #include "tnc.h"
@@ -503,6 +504,25 @@ void tty_write_str(tty_t *ttyp, uint8_t const *str)
     int len = strlen((char const *)str);
 
     tty_write(ttyp, str, len);
+}
+
+bool tty_read_char_nonblocking(tty_t *ttyp, uint8_t *ch)
+{
+    if (!ttyp || !ch) return false;
+
+    if (ttyp->tty_serial == TTY_USB) {
+        if (!tud_cdc_available()) return false;
+        *ch = (uint8_t)tud_cdc_read_char();
+        return true;
+    }
+
+    if (ttyp->tty_serial == TTY_UART0) {
+        if (!uart_is_readable(uart0)) return false;
+        *ch = uart_getc(uart0);
+        return true;
+    }
+
+    return false;
 }
 
 void tty_input(tty_t *ttyp, int ch)
