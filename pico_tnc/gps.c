@@ -135,19 +135,10 @@ static void gps_power_on(void){}
 static void gps_power_off(void){}
 static bool gps_diag_exit_requested(tty_t *ttyp)
 {
-    if (!ttyp) return false;
+    uint8_t ch;
 
-    if (ttyp->tty_serial == TTY_USB) {
-        if (!tud_cdc_available()) return false;
-        return tud_cdc_read_char() == 0x03;
-    }
-
-    if (ttyp->tty_serial == TTY_UART0) {
-        if (!uart_is_readable(uart0)) return false;
-        return uart_getc(uart0) == 0x03;
-    }
-
-    return false;
+    if (!tty_read_char_nonblocking(ttyp, &ch)) return false;
+    return ch == 0x03;
 }
 
 void gps_init_runtime(void){

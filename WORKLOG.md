@@ -2,6 +2,32 @@
 
 This file tracks implementation work, validation, and remaining risks.
 
+## 2026-05-03
+
+### Summary
+`gps diag` の CTRL+C 判定を tty 層へ移し、`gps.c` から USB/UART 直接分岐を除去。あわせて `tty_write*` 利用時のプロトタイプ警告要因を解消。
+
+### Files changed
+- `pico_tnc/tty.h`
+- `pico_tnc/tty.c`
+- `pico_tnc/gps.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- 追加API `tty_read_char_nonblocking(tty_t*, uint8_t*)` を導入し、USB/UART0 の非ブロッキング1文字入力を tty 層で抽象化。
+- `gps_diag_exit_requested()` は tty API のみを使って CTRL+C (`0x03`) を判定する実装へ変更。
+- `gps.c` から `tud_cdc_*` と UART0 直接読み取りを排除し、アプリ層への実装詳細漏れを抑制。
+- RAM/queue impact note: 追加は関数のみで固定RAM増加なし、既存キューサイズ変更なし。
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build`
+- In this environment, firmware build cannot be run because Pico SDK path is not configured (`PICO_SDK_PATH` missing).
+
+### Remaining risks / TODO
+- USB側は既存どおり TinyUSB CDC (`tud_cdc_available` / `tud_cdc_read_char`) を tty 層内で利用。将来、USB入力経路を単一化する場合は `usb_input` コールバック経路との取り合いを実機で再評価すること。
+
 ## 2026-04-27
 
 ### Summary
