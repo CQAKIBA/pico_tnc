@@ -55,6 +55,7 @@ See LICENSE and LICENSE-3RD-PARTY for details.
 #include "libmona_pico/mona_pico_api.h"
 #include "mona_backend_minimal.h"
 #include "qsl_card.h"
+#include "gps.h"
 
 #define CONVERSE_PORT 0
 
@@ -940,27 +941,63 @@ static bool cmd_echo(tty_t *ttyp, uint8_t *buf, int len)
     return true;
 }
 
+static bool gps_parse_baud(uint8_t *buf, uint32_t *baud)
+{
+    if (!strncasecmp((char *)buf, "AUTO", 4)) { *baud = 0; return true; }
+    long v = strtol((char *)buf, NULL, 10);
+    if (v == 4800 || v == 9600 || v == 19200 || v == 38400 || v == 57600 || v == 115200) { *baud = (uint32_t)v; return true; }
+    return false;
+}
+
 static bool cmd_gps(tty_t *ttyp, uint8_t *buf, int len)
 {
+    (void)len;
     if (buf && buf[0]) {
-
-        for (int i = 0; i < 3; i++) {
-            uint8_t const *str = gps_str[i];
-        
-            if (!strncasecmp(buf, str, strlen(str))) {
-                param.gps = i;
+        if (!strncasecmp((char *)buf, "ON", 2)) {
+            gps_set_enabled(true);
+            tty_write_str(ttyp, "GPS: enabled\r\nGPS: baud=");
+            if (gps_get_baud_setting() == 0) tty_write_str(ttyp, "AUTO\r\n");
+            else { uint8_t t[16]; tty_write(ttyp, t, snprintf((char *)t, sizeof(t), "%lu\r\n", (unsigned long)gps_get_baud_setting())); }
+            return true;
+        }
+        if (!strncasecmp((char *)buf, "OFF", 3)) {
+            gps_set_enabled(false);
+            tty_write_str(ttyp, "GPS: disabled\r\n");
+            return true;
+        }
+        if (!strncasecmp((char *)buf, "DIAG", 4)) return gps_diag(ttyp);
+        if (!strncasecmp((char *)buf, "BAUD", 4)) {
+            uint8_t *p = buf + 4; while (*p == ' ') p++;
+            if (!*p) {
+                uint8_t t[24];
+                tty_write_str(ttyp, "GPS Baud: ");
+                if (gps_get_baud_setting() == 0) tty_write_str(ttyp, "AUTO\r\n"); else { tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)gps_get_baud_setting())); }
+                tty_write_str(ttyp, "GPS Active Baud: "); if (gps_get_active_baud()) tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)gps_get_active_baud())); else tty_write_str(ttyp, "-\r\n");
+                tty_write_str(ttyp, "GPS Last Good Baud: "); if (gps_get_last_good_baud()) tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)gps_get_last_good_baud())); else tty_write_str(ttyp, "-\r\n");
                 return true;
             }
+            uint32_t baud;
+            if (!gps_parse_baud(p, &baud) || !gps_set_baud_setting(baud)) {
+                tty_write_str(ttyp, "ERROR: invalid GPS baud rate\r\nAvailable: auto, 4800, 9600, 19200, 38400, 57600, 115200\r\n");
+                return true;
+            }
+            tty_write_str(ttyp, "GPS Baud: ");
+            if (baud == 0) tty_write_str(ttyp, "AUTO\r\n"); else { uint8_t t[16]; tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)baud)); }
+            return true;
+        }
+        for (int i = 0; i < 3; i++) {
+            if (!strncasecmp((char *)buf, (char *)gps_str[i], strlen((char *)gps_str[i]))) { param.gps = i; return true; }
         }
         return false;
-
-    } else {
-
-        tty_write_str(ttyp, "GPS ");
-        tty_write_str(ttyp, gps_str[param.gps]);
-        tty_write_str(ttyp, "\r\n");
     }
-
+    tty_write_str(ttyp, "GPS: "); tty_write_str(ttyp, gps_is_enabled() ? "ON\r\n" : "OFF\r\n");
+    tty_write_str(ttyp, "GPS Baud: ");
+    if (gps_get_baud_setting() == 0) tty_write_str(ttyp, "AUTO\r\n"); else { uint8_t t[16]; tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)gps_get_baud_setting())); }
+    tty_write_str(ttyp, "GPS Active Baud: "); { uint8_t t[16]; if (gps_get_active_baud()) tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)gps_get_active_baud())); else tty_write_str(ttyp, "-\r\n"); }
+    tty_write_str(ttyp, "GPS Last Good Baud: "); { uint8_t t[16]; if (gps_get_last_good_baud()) tty_write(ttyp, t, snprintf((char *)t,sizeof(t),"%lu\r\n",(unsigned long)gps_get_last_good_baud())); else tty_write_str(ttyp, "-\r\n"); }
+    tty_write_str(ttyp, "GPS NMEA: "); tty_write_str(ttyp, gps_get_nmea_status()); tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "GPS Fix: "); tty_write_str(ttyp, gps_get_fix_status()); tty_write_str(ttyp, "\r\n");
+    tty_write_str(ttyp, "GPS Sentence "); tty_write_str(ttyp, gps_str[param.gps]); tty_write_str(ttyp, "\r\n");
     return true;
 }
 

@@ -224,6 +224,9 @@ typedef struct TNC_PARAM {
     uint16_t axdelay;
     uint16_t axhang;
     uint8_t gps;
+    uint8_t gps_enabled;
+    uint32_t gps_baud;
+    uint32_t gps_last_good_baud;
     uint8_t mon;
     uint8_t digi;
     uint8_t beacon;
