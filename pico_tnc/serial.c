@@ -63,7 +63,7 @@ void serial_init(void)
 
     //printf("UART1 baud rate = %u\n", baud);
 
-    uart_set_fifo_enabled(uart0, true);
+    uart_set_fifo_enabled(uart1, true);
     gpio_set_function(4, GPIO_FUNC_UART);
     gpio_set_function(5, GPIO_FUNC_UART);
 #endif
@@ -102,6 +102,7 @@ void serial_input(void)
         int ch = uart_getc(uart1);
         gps_input(ch);
     }
+    gps_poll();
 #endif
 
     while (uart_is_readable(uart0)) {

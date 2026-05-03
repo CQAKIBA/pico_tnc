@@ -56,6 +56,7 @@ See LICENSE and LICENSE-3RD-PARTY for details.
 #include "tty.h"
 #include "beacon.h"
 #include "help.h"
+#include "gps.h"
 
 #define TIME_10MS (10 * 1000)    // 10 ms = 10 * 1000 us
 
@@ -82,6 +83,7 @@ int main()
     send_init();
     receive_init();
     serial_init();
+    gps_init_runtime();
     tty_init();     // should call after tnc_init()
     //bell202_init();
 #ifdef BUSY_PIN

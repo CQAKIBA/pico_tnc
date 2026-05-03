@@ -77,7 +77,7 @@ pico_tnc.uf2
 |PERM|perm|設定を不揮発性メモリに保存する|
 |DISP|disp|設定値の表示|
 |ECHO|echo on, echo off|シリアル入力のエコーバックの設定，on 表示する，off 表示しない|
-|GPS|gps $GPGAA, gps $GPGLL, gps $GPRMC|GPSのどのメッセージを送信するかの設定，それぞれの$GPSメッセージを送信|
+|GPS|gps on/off, gps baud auto/9600..., gps diag, gps $GPGGA/$GPGLL/$GPRMC|GPS有効/無効，baud自動検出/固定設定，NMEA診断，APRS送信センテンス指定|
 |PRIVKEY GEN|privkey gen p2pkh|Monacoin秘密鍵の生成（生成後にアドレス表示、`Space`で再生成、`Enter`でRAM反映。Flash保存は`perm`が必要）|
 |PRIVKEY SET|privkey set p2wpkh:`<WIF>`|Monacoin秘密鍵のインポート. 保存対象は32byte生鍵+compressed+active typeのみ．`set m/p/mona1/p2pkh/p2sh/p2wpkh`はactive typeのみ正規化して更新．|
 |PRIVKEY SHOW|privkey show|Monacoin秘密鍵の表示. `show`はセキュリティ確認後に秘密情報を表示.|

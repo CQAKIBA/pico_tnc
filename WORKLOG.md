@@ -1818,3 +1818,58 @@ Allow `UNPROTO` digi path separator to accept both `v` and `via` to reduce opera
 
 ### Remaining risks / TODOs
 - None specific; `via` acceptance intentionally requires the same spacing rules as existing `v` parsing.
+
+## 2026-05-02
+
+### Summary
+GPS UART の baud 設定手動化、AUTO 自動探索、`gps diag` 診断、`gps on/off`、`disp` への状態表示を追加。
+
+### Files changed
+- `pico_tnc/gps.c`
+- `pico_tnc/gps.h`
+- `pico_tnc/cmd.c`
+- `pico_tnc/serial.c`
+- `pico_tnc/tnc.h`
+- `pico_tnc/tnc.c`
+- `pico_tnc/main.c`
+- `pico_tnc/help.c`
+- `README.md`
+- `README_JP.md`
+- `WORKLOG.md`
+
+### Behavior changes
+- `gps on/off`, `gps baud`, `gps baud auto`, `gps baud <rate>`, `gps diag` を追加。
+- `disp` で GPS ON/OFF、baud設定、active baud、last good baud、NMEA/FIX 状態を表示。
+- AUTO 時は候補 baud を巡回し、チェックサム整合した NMEA を受信した baud を `last_good_baud` に記録。
+- `gps off` で受信処理と探索を停止し、`gps on` で設定に応じて固定受信/探索を再開。
+- RAM/queue impact note: 固定長の GPS ランタイム状態を追加。既存キュー長の変更なし。
+
+### Validation status
+- Build attempted with:
+  - `cmake -S . -B build`
+  - `cmake --build build -j4`
+- In this environment, firmware build cannot complete because Pico SDK path is not configured (`PICO_SDK_PATH` missing).
+
+### Remaining risks / TODO
+- `gps diag` の Ctrl+C 判定は USB CDC 入力依存で、UART 端末経路の終了確認は実機で要検証。
+- GPS モジュール未接続/測位前の実機で AUTO 探索周期とログ頻度を要調整。
+
+## 2026-05-02
+
+### Summary
+`gps.c` / `gps.h` に既存ファイルと同形式のライセンスヘッダ（原著作権・修正表記）を追加。
+
+### Files changed
+- `pico_tnc/gps.c`
+- `pico_tnc/gps.h`
+- `WORKLOG.md`
+
+### Behavior changes
+- 実行時挙動の変更なし（コメントヘッダのみ）。
+- RAM/queue impact note: 変更なし。
+
+### Validation status
+- No build required for comment-only header update.
+
+### Remaining risks / TODO
+- なし。

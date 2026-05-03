@@ -24,6 +24,27 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+/*
+Modifications:
+Copyright (c) 2026 Daisuke JA1UMW / CQAKIBA.TOKYO
+Released under the MIT License.
+See LICENSE and LICENSE-3RD-PARTY for details.
+*/
 
 #pragma once
+#include <stdbool.h>
+#include <stdint.h>
+#include "tty.h"
+
+void gps_init_runtime(void);
+void gps_poll(void);
 void gps_input(int ch);
+bool gps_set_enabled(bool enabled);
+bool gps_set_baud_setting(uint32_t baud);
+uint32_t gps_get_baud_setting(void);
+uint32_t gps_get_active_baud(void);
+uint32_t gps_get_last_good_baud(void);
+bool gps_is_enabled(void);
+char const *gps_get_nmea_status(void);
+char const *gps_get_fix_status(void);
+bool gps_diag(tty_t *ttyp);
