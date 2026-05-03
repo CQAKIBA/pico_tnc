@@ -1893,3 +1893,24 @@ GPS UART の baud 設定手動化、AUTO 自動探索、`gps diag` 診断、`gps
 
 ### Remaining risks / TODO
 - UART経路でのCtrl+C終端は実機端末種別ごとの差分（CR/LF送出やローカルエコー設定）を最終確認する。
+
+## 2026-05-03
+
+### Summary
+有効NMEA受信時に FIX 状態を更新するよう修正（GGA/RMC の fix フィールドを解析）。
+
+### Files changed
+- `pico_tnc/gps.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- チェックサムOKな `$GPGGA/$GNGGA` 受信時、fix quality(6番目フィールド) を解析して `gps_rt.fix_valid` を更新。
+- チェックサムOKな `$GPRMC/$GNRMC` 受信時、status(2番目フィールド A/V) を解析して `gps_rt.fix_valid` を更新。
+- これにより `gps_get_fix_status()` / `disp` の `GPS Fix` 表示が実受信内容に追従。
+- RAM/queue impact note: 小規模ヘルパー関数追加のみ。固定バッファ/キューサイズ変更なし。
+
+### Validation status
+- Manual code-path inspection only (environment build limitation remains).
+
+### Remaining risks / TODO
+- talker/センテンス拡張（GL/GA/BD/GB/QZ の RMC/GGA）を必要に応じて追加検討。

@@ -70,6 +70,47 @@ static uint8_t gps_buf[GPS_LEN + 1];
 static int gps_idx = 0;
 static gps_runtime_t gps_rt;
 
+static bool gps_parse_fix_status(uint8_t const *line, int len, bool *has_fix_field, bool *fix_valid)
+{
+    int comma_count = 0;
+
+    if (!line || len < 10 || line[0] != '$') return false;
+    if (!has_fix_field || !fix_valid) return false;
+
+    *has_fix_field = false;
+    *fix_valid = false;
+
+    if (!strncmp((char const *)line, "$GPGGA", 6) || !strncmp((char const *)line, "$GNGGA", 6)) {
+        for (int i = 0; i < len; i++) {
+            if (line[i] != ',') continue;
+            comma_count++;
+            if (comma_count == 6) {
+                int q = (i + 1 < len) ? line[i + 1] : '0';
+                *has_fix_field = true;
+                *fix_valid = (q >= '1' && q <= '8');
+                return true;
+            }
+        }
+        return true;
+    }
+
+    if (!strncmp((char const *)line, "$GPRMC", 6) || !strncmp((char const *)line, "$GNRMC", 6)) {
+        for (int i = 0; i < len; i++) {
+            if (line[i] != ',') continue;
+            comma_count++;
+            if (comma_count == 2) {
+                int s = (i + 1 < len) ? line[i + 1] : 'V';
+                *has_fix_field = true;
+                *fix_valid = (s == 'A');
+                return true;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
 static bool gps_checksum_ok(uint8_t const *line, int len) {
     if (len < 7 || line[0] != '$') return false;
     int star = -1;
@@ -150,10 +191,16 @@ void gps_input(int ch){
             if (tnc_time() - gps_timer >= GPS_INTERVAL) { send_unproto(&tnc[GPS_PORT], gps_buf, gps_idx); gps_timer = tnc_time(); }
         }
         if (gps_checksum_ok(gps_buf, gps_idx)) {
+            bool has_fix_field = false;
+            bool fix_valid = false;
+
             gps_rt.nmea_recent = true;
             gps_rt.last_valid_tick = tnc_time();
             if (gps_rt.active_baud) { gps_rt.last_good_baud = gps_rt.active_baud; param.gps_last_good_baud = gps_rt.last_good_baud; }
             gps_rt.search_active = false;
+            if (gps_parse_fix_status(gps_buf, gps_idx, &has_fix_field, &fix_valid) && has_fix_field) {
+                gps_rt.fix_valid = fix_valid;
+            }
         }
         gps_idx = 0;
     }
