@@ -643,6 +643,7 @@ void tty_input(tty_t *ttyp, int ch)
             break;
 
         case CTRL_C:
+            gps_diag_disable(ttyp);
             if (converse_mode) {
                 converse_mode = false;
             }

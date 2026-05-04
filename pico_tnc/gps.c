@@ -49,6 +49,7 @@ See LICENSE and LICENSE-3RD-PARTY for details.
 #define GPS_SCAN_TICKS 360
 #define GPS_DIAG_SCAN_TICKS 360
 #define GPS_NMEA_STALE_TICKS 1000
+#define GPS_DIAG_LOG_INTERVAL_TICKS 200
 
 typedef struct {
     bool enabled;
@@ -69,6 +70,12 @@ static const uint32_t gps_baud_candidates[] = {9600, 38400, 115200, 4800, 19200,
 static uint8_t gps_buf[GPS_LEN + 1];
 static int gps_idx = 0;
 static gps_runtime_t gps_rt;
+static bool gps_diag_enabled;
+static tty_t *gps_diag_ttyp;
+static uint32_t gps_diag_last_status_tick;
+static bool gps_diag_last_fix_valid;
+static bool gps_diag_last_nmea_recent;
+static uint32_t gps_diag_last_active_baud;
 
 static bool gps_parse_fix_status(uint8_t const *line, int len, bool *has_fix_field, bool *fix_valid)
 {
@@ -133,14 +140,6 @@ static bool gps_valid_baud(uint32_t baud) {
 static void gps_apply_baud(uint32_t baud){ uart_set_baudrate(uart1, baud); gps_rt.active_baud = baud; }
 static void gps_power_on(void){}
 static void gps_power_off(void){}
-static bool gps_diag_exit_requested(tty_t *ttyp)
-{
-    uint8_t ch;
-
-    if (!tty_read_char_nonblocking(ttyp, &ch)) return false;
-    return ch == 0x03;
-}
-
 void gps_init_runtime(void){
     if (!gps_valid_baud(param.gps_baud)) param.gps_baud = 0;
     gps_rt.enabled = param.gps_enabled ? true : false;
@@ -170,6 +169,24 @@ void gps_poll(void){
         gps_rt.next_switch_tick = now + GPS_SCAN_TICKS;
     }
     if (gps_rt.nmea_recent && (int32_t)(now - gps_rt.last_valid_tick) > GPS_NMEA_STALE_TICKS) gps_rt.nmea_recent = false;
+    if (!gps_diag_enabled) return;
+    if ((int32_t)(now - gps_diag_last_status_tick) < GPS_DIAG_LOG_INTERVAL_TICKS) return;
+    gps_diag_last_status_tick = now;
+
+    if (gps_diag_last_active_baud != gps_rt.active_baud) {
+        char tmp[64];
+        int n = snprintf(tmp, sizeof(tmp), "GPS DIAG: active baud=%lu\r\n", (unsigned long)gps_rt.active_baud);
+        if (n > 0 && gps_diag_ttyp) tty_write(gps_diag_ttyp, (uint8_t const *)tmp, n);
+        gps_diag_last_active_baud = gps_rt.active_baud;
+    }
+    if (gps_diag_last_nmea_recent != gps_rt.nmea_recent) {
+        if (gps_diag_ttyp) tty_write_str(gps_diag_ttyp, gps_rt.nmea_recent ? "GPS DIAG: NMEA=OK\r\n" : "GPS DIAG: NMEA=waiting\r\n");
+        gps_diag_last_nmea_recent = gps_rt.nmea_recent;
+    }
+    if (gps_diag_last_fix_valid != gps_rt.fix_valid) {
+        if (gps_diag_ttyp) tty_write_str(gps_diag_ttyp, gps_rt.fix_valid ? "GPS DIAG: FIX=YES\r\n" : "GPS DIAG: FIX=NO\r\n");
+        gps_diag_last_fix_valid = gps_rt.fix_valid;
+    }
 }
 
 void gps_input(int ch){
@@ -224,36 +241,20 @@ char const *gps_get_nmea_status(void){ if (!gps_rt.enabled) return "-"; if (gps_
 char const *gps_get_fix_status(void){ if (!gps_rt.enabled) return "-"; return gps_rt.fix_valid ? "FIX" : "NO FIX"; }
 
 bool gps_diag(tty_t *ttyp){
-    tty_write_str(ttyp, "GPS NMEA Diagnosis\r\nPress CTRL+C to exit.\r\n");
-    uint8_t line[GPS_LEN + 1]; int idx = 0; bool warned = false;
-    while (1) {
-        if (gps_diag_exit_requested(ttyp)) break;
-        if (gps_rt.baud_setting == 0) {
-            for (size_t i=0;i<sizeof(gps_baud_candidates)/sizeof(gps_baud_candidates[0]);i++) {
-                uint32_t b = (i==0 && gps_rt.last_good_baud)?gps_rt.last_good_baud:gps_baud_candidates[i];
-                tty_write_str(ttyp, "GPS: trying "); char tmp[16]; snprintf(tmp,sizeof(tmp),"%lu",(unsigned long)b); tty_write_str(ttyp,tmp); tty_write_str(ttyp,"...\r\n");
-                gps_apply_baud(b);
-                absolute_time_t end = make_timeout_time_ms(GPS_DIAG_SCAN_TICKS*10);
-                while (!time_reached(end)) {
-                    if (gps_diag_exit_requested(ttyp)) goto done;
-                    while (uart_is_readable(uart1)) {
-                        int ch = uart_getc(uart1);
-                        if (ch == '$') idx = 0;
-                        if (idx < GPS_LEN) line[idx++] = (uint8_t)ch;
-                        if (ch == '\n') { tty_write(ttyp, line, idx); if (gps_checksum_ok(line, idx)) { tty_write_str(ttyp, "GPS: valid NMEA detected at "); tty_write_str(ttyp, tmp); tty_write_str(ttyp, " baud\r\n"); } idx = 0; }
-                    }
-                }
-            }
-            if (!warned) { tty_write_str(ttyp, "GPS: no NMEA detected. Some GPS modules output only after fix.\r\nGPS: scan continues. Press CTRL+C to exit.\r\n"); warned = true; }
-        } else {
-            uint32_t b = gps_rt.baud_setting; char tmp[16]; snprintf(tmp,sizeof(tmp),"%lu",(unsigned long)b);
-            tty_write_str(ttyp,"GPS: baud="); tty_write_str(ttyp,tmp); tty_write_str(ttyp,"\r\nGPS: listening...\r\n"); gps_apply_baud(b);
-            while (1) {
-                if (gps_diag_exit_requested(ttyp)) goto done;
-                while (uart_is_readable(uart1)) { int ch = uart_getc(uart1); if (ch=='$') idx=0; if (idx<GPS_LEN) line[idx++]=(uint8_t)ch; if (ch=='\n'){ tty_write(ttyp,line,idx); idx=0; } }
-            }
-        }
-    }
-done:
+    gps_diag_enabled = true;
+    gps_diag_ttyp = ttyp;
+    gps_diag_last_status_tick = 0;
+    gps_diag_last_fix_valid = !gps_rt.fix_valid;
+    gps_diag_last_nmea_recent = !gps_rt.nmea_recent;
+    gps_diag_last_active_baud = 0xffffffffu;
+    tty_write_str(ttyp, "GPS DIAG: enabled\r\nPress CTRL+C to stop diagnostics.\r\n");
     return true;
+}
+
+void gps_diag_disable(tty_t *ttyp)
+{
+    if (!gps_diag_enabled) return;
+    gps_diag_enabled = false;
+    gps_diag_ttyp = NULL;
+    tty_write_str(ttyp, "GPS DIAG: disabled\r\n");
 }

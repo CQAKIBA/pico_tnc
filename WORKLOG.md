@@ -1940,3 +1940,27 @@ GPS UART の baud 設定手動化、AUTO 自動探索、`gps diag` 診断、`gps
 
 ### Remaining risks / TODO
 - talker/センテンス拡張（GL/GA/BD/GB/QZ の RMC/GGA）を必要に応じて追加検討。
+
+## 2026-05-03
+
+### Summary
+`gps diag` をブロッキング診断ループから、GPS各処理部の状態ログを有効化/無効化するフラグ方式へ変更。
+
+### Files changed
+- `pico_tnc/gps.c`
+- `pico_tnc/gps.h`
+- `pico_tnc/tty.c`
+- `WORKLOG.md`
+
+### Behavior changes
+- `gps diag` 実行時は即時復帰し、診断ログフラグを有効化。
+- 診断有効中は `gps_poll()` で状態変化（active baud / NMEA受信状態 / FIX状態）をTTYへ出力。
+- `Ctrl+C` 入力時に `gps_diag_disable()` を呼んで診断ログを停止。
+- RAM/queue impact note: 追加状態は bool と数個のスカラーのみ。固定キューサイズ変更なし。
+
+### Validation status
+- `cmake -S . -B build` 実行: `PICO_SDK_PATH` 未設定のためビルド不可（環境制約）。
+- 静的コード確認で `gps diag` がブロッキングループを持たないこと、`Ctrl+C` で停止する経路を確認。
+
+### Remaining risks / TODO
+- 診断ログ出力は端末帯域に依存するため、必要に応じて出力間隔の調整を検討。

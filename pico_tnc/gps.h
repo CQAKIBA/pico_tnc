@@ -48,3 +48,4 @@ bool gps_is_enabled(void);
 char const *gps_get_nmea_status(void);
 char const *gps_get_fix_status(void);
 bool gps_diag(tty_t *ttyp);
+void gps_diag_disable(tty_t *ttyp);
