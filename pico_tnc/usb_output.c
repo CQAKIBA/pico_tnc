@@ -117,23 +117,13 @@ void usb_output(void)
     tud_cdc_write_flush();
 }
 
-// TinyUSB callback function
+// TinyUSB callback function.
+// Keep the callback light; the main loop drains usb_queue by calling
+// usb_output() regularly. This avoids doing extra CDC writes from inside a
+// TinyUSB callback context.
 void tud_cdc_tx_complete_cb(uint8_t itf)
 {
-    uint8_t data;
-
-    if (queue_is_empty(&usb_queue)) return; // no queued data
-
-    int free = tud_cdc_write_available();
-
-    while (free > 0) {
-
-        if (!queue_try_remove(&usb_queue, &data)) break;
-
-        tud_cdc_write_char(data);
-        --free;
-    }
-    tud_cdc_write_flush();
+    (void)itf;
 }
 
 #if 0

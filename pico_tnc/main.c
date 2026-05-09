@@ -50,7 +50,7 @@ See LICENSE and LICENSE-3RD-PARTY for details.
 #include "ax25.h"
 
 #include "cmd.h"
-//#include "usb_input.h"
+#include "usb_input.h"
 #include "usb_output.h"
 #include "serial.h"
 #include "tty.h"
@@ -69,14 +69,15 @@ static const uint8_t greeting[] =
 
 int main()
 {
+    // Initialize local USB queues before enabling stdio/TinyUSB callbacks.
+    usb_input_init();
+    usb_output_init();
+
     stdio_init_all();
 
     if (watchdog_caused_reboot()) {
         printf("Watch Dog Timer Failure\n");
     }
-
-    // create usb output queue
-    usb_output_init();
 
     // initialize tnc
     tnc_init();
@@ -133,6 +134,10 @@ int main()
         // output KISS frame to serial
         //kiss_output();
 
+        // process terminal I/O
+        usb_input();
+        usb_output();
+
         // process uart I/O
         serial_input();
         serial_output();
@@ -146,6 +151,9 @@ int main()
         // non-blocking help output
         help_poll();
         cmd_poll();
+
+        // Try one more USB output drain after command/help processing.
+        usb_output();
 
 #ifdef BUSY_PIN
 //        gpio_put(BUSY_PIN, 0);

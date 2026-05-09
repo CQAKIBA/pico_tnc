@@ -511,9 +511,7 @@ bool tty_read_char_nonblocking(tty_t *ttyp, uint8_t *ch)
     if (!ttyp || !ch) return false;
 
     if (ttyp->tty_serial == TTY_USB) {
-        if (!tud_cdc_available()) return false;
-        *ch = (uint8_t)tud_cdc_read_char();
-        return true;
+        return usb_read_char_nonblocking(ch);
     }
 
     if (ttyp->tty_serial == TTY_UART0) {
